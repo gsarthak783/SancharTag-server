@@ -34,7 +34,8 @@ const userSchema = new mongoose.Schema({
     },
     acceptedPolicy: { type: Boolean, default: false },
     policyAcceptedAt: { type: Date },
-    emergencyContact: { type: String }
+    emergencyContact: { type: String },
+    bloodGroup: { type: String }
 }, {
     timestamps: true // Adds createdAt and updatedAt automatically
 });

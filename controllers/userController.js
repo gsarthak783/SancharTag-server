@@ -34,7 +34,7 @@ const getUsers = asyncHandler(async (req, res) => {
 // @route   POST /users
 // @access  Public
 const createUser = asyncHandler(async (req, res) => {
-    const { userId, phoneNumber, name, email, notificationPreferences, acceptedPolicy, policyAcceptedAt, emergencyContact } = req.body;
+    const { userId, phoneNumber, name, email, notificationPreferences, acceptedPolicy, policyAcceptedAt, emergencyContact, bloodGroup } = req.body;
 
     if (!userId || !phoneNumber) {
         res.status(400);
@@ -58,7 +58,8 @@ const createUser = asyncHandler(async (req, res) => {
         notificationPreferences,
         acceptedPolicy,
         policyAcceptedAt,
-        emergencyContact
+        emergencyContact,
+        bloodGroup
     });
 
     if (user) {
