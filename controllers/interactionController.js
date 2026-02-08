@@ -20,12 +20,26 @@ const getInteractions = asyncHandler(async (req, res) => {
 // @route   POST /interactions
 // @access  Public
 const createInteraction = asyncHandler(async (req, res) => {
-    const { interactionId, userId, vehicleId, type, contactType, messages, lastMessage, scanner } = req.body;
+    let { interactionId, userId, vehicleId, type, contactType, messages, lastMessage, scanner } = req.body;
 
-    if (!interactionId || !userId || !vehicleId || !type) {
+    // Defaults
+    type = type || 'Scan';
+    contactType = contactType || 'scan';
+
+    if (!interactionId || !userId || !vehicleId) {
         res.status(400);
-        throw new Error('Please add all required fields');
+        throw new Error('Please add all required fields (interactionId, userId, vehicleId)');
     }
+
+    // Capture IP
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+
+    // Merge scanner details
+    scanner = {
+        ...scanner,
+        ip: ip,
+        capturedAt: new Date()
+    };
 
     const interaction = await Interaction.create({
         interactionId,

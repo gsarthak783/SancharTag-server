@@ -80,6 +80,7 @@ const interactionSchema = new mongoose.Schema({
         language: { type: String },
         screenResolution: { type: String },
         timezone: { type: String },
+        isp: { type: String },
         capturedAt: { type: Date }
     },
 
