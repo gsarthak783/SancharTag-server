@@ -111,6 +111,12 @@ const addMessage = asyncHandler(async (req, res) => {
     interaction.messages.push(newMessage);
     interaction.lastMessage = text;
 
+    // Reactivate if scanner sends a message to a resolved interaction
+    if (senderId === 'scanner' && interaction.status === 'resolved') {
+        interaction.status = 'active';
+        interaction.resolvedAt = undefined;
+    }
+
     await interaction.save();
 
     res.status(201).json(newMessage);
@@ -139,10 +145,74 @@ const deleteInteraction = asyncHandler(async (req, res) => {
     res.json({ id: interactionId, message: 'Interaction deleted and archived' });
 });
 
+// @desc    Get interaction by ID
+// @route   GET /interactions/:id
+// @access  Public
+const getInteractionById = asyncHandler(async (req, res) => {
+    const interaction = await Interaction.findOne({ interactionId: req.params.id });
+
+    if (interaction) {
+        res.json(interaction);
+    } else {
+        res.status(404);
+        throw new Error('Interaction not found');
+    }
+});
+
+// @desc    Update interaction status
+// @route   PATCH /interactions/:id/status
+// @access  Public
+const updateStatus = asyncHandler(async (req, res) => {
+    const interactionId = req.params.id;
+    const { status } = req.body;
+
+    const interaction = await Interaction.findOne({ interactionId });
+
+    if (!interaction) {
+        res.status(404);
+        throw new Error('Interaction not found');
+    }
+
+    interaction.status = status;
+
+    if (status === 'resolved') {
+        interaction.resolvedAt = new Date();
+    } else if (status === 'active') {
+        interaction.resolvedAt = undefined;
+    }
+
+    await interaction.save();
+
+    res.json(interaction);
+});
+
+// @desc    Mark interaction as resolved
+// @route   PATCH /interactions/:id/resolve
+// @access  Public
+const resolveInteraction = asyncHandler(async (req, res) => {
+    const interactionId = req.params.id;
+    console.log(`Resolving interaction: ${interactionId}`);
+    const interaction = await Interaction.findOne({ interactionId });
+
+    if (!interaction) {
+        res.status(404);
+        throw new Error('Interaction not found');
+    }
+
+    interaction.status = 'resolved';
+    interaction.resolvedAt = new Date();
+    await interaction.save();
+
+    res.json(interaction);
+});
+
 module.exports = {
     getInteractions,
     createInteraction,
     updateInteraction,
     deleteInteraction,
-    addMessage
+    addMessage,
+    resolveInteraction,
+    getInteractionById,
+    updateStatus
 };

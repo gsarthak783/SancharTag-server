@@ -60,10 +60,20 @@ io.on('connection', (socket) => {
                 return;
             }
 
-            // Only allow messages if status is active
+            // Only allow messages if status is active, or if scanner is reactivating a resolved session
             if (interaction.status !== 'active') {
-                socket.emit('error', { message: 'Chat session has ended' });
-                return;
+                if (senderId === 'scanner' && ['resolved', 'ignored', 'reported'].includes(interaction.status)) {
+                    interaction.status = 'active';
+                    interaction.resolvedAt = undefined;
+                    // Emit status update to owner so they know it's active again
+                    io.to(interactionId).emit('status_update', {
+                        interactionId,
+                        status: 'active'
+                    });
+                } else {
+                    socket.emit('error', { message: 'Chat session has ended' });
+                    return;
+                }
             }
 
             const newMessage = {

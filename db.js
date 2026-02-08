@@ -75,6 +75,7 @@ const interactionSchema = new mongoose.Schema({
     type: { type: String, required: true }, // e.g., Wrong Parking
     contactType: { type: String, required: true }, // e.g., chat, scan
     status: { type: String, default: 'active' }, // active, resolved, missed, ignored
+    resolvedAt: { type: Date },
 
     // Scanner details captured during interaction
     scanner: {
