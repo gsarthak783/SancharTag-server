@@ -12,6 +12,7 @@ let expo = new Expo();
  * @param {object} data - Optional data payload (e.g., interactionId)
  */
 const sendPushNotification = async (pushToken, title, body, data = {}) => {
+    console.log(`Sending notification to token: ${pushToken}`);
     if (!Expo.isExpoPushToken(pushToken)) {
         console.error(`Push token ${pushToken} is not a valid Expo push token`);
         return;
