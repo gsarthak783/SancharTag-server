@@ -25,6 +25,8 @@ const sendPushNotification = async (pushToken, title, body, data = {}) => {
         body: body,
         data: data,
         priority: 'high',
+        channelId: 'default', // Required for Android 8.0+
+        vibrate: [0, 250, 250, 250], // Vibration pattern
     });
 
     // The Expo push notification service accepts batches of notifications so
@@ -42,7 +44,7 @@ const sendPushNotification = async (pushToken, title, body, data = {}) => {
         for (let chunk of chunks) {
             try {
                 let ticketChunk = await expo.sendPushNotificationsAsync(chunk);
-                // console.log(ticketChunk);
+                console.log('Notification Ticket Chunk:', ticketChunk);
                 tickets.push(...ticketChunk);
                 // NOTE: If a ticket contains an error code in ticket.details.error, you
                 // must handle it appropriately. The error codes are listed in the Expo
