@@ -106,6 +106,7 @@ io.on('connection', (socket) => {
             const interaction = await Interaction.findOne({ interactionId });
             if (interaction && interaction.status === 'active') {
                 interaction.status = 'resolved';
+                interaction.resolvedAt = new Date();
                 await interaction.save();
 
                 // Broadcast to all clients in the room
