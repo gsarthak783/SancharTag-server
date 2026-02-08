@@ -36,7 +36,7 @@ const io = new Server(server, {
 });
 
 // Import Interaction model for socket handlers
-const { Interaction, User } = require('./db');
+const { Interaction, User, Vehicle } = require('./db');
 const { sendPushNotification } = require('./utils/notifications');
 const mongoose = require('mongoose');
 
