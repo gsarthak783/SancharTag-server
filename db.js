@@ -52,7 +52,6 @@ const vehicleSchema = new mongoose.Schema({
     tagId: { type: String },
     ownerName: { type: String },
     ownerContactNumber: { type: String },
-    emergencyContactNumber: { type: String },
     isActive: { type: Boolean, default: true },
     qrCodeUrl: { type: String }
 }, {

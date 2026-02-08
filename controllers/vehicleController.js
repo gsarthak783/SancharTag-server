@@ -1,5 +1,5 @@
 const asyncHandler = require('express-async-handler');
-const { Vehicle } = require('../db');
+const { Vehicle, User } = require('../db');
 
 // @desc    Get vehicles (supports query by tagId)
 // @route   GET /vehicles
@@ -16,15 +16,26 @@ const getVehicles = asyncHandler(async (req, res) => {
         query.vehicleId = vehicleId;
     }
 
-    const vehicles = await Vehicle.find(query);
-    res.json(vehicles);
+    const vehicles = await Vehicle.find(query).lean();
+
+    // Enrich with user privacy settings and emergency contact
+    const enrichedVehicles = await Promise.all(vehicles.map(async (vehicle) => {
+        const user = await User.findOne({ userId: vehicle.userId }).lean();
+        return {
+            ...vehicle,
+            showEmergencyContact: user?.privacySettings?.showEmergencyContact ?? true,
+            emergencyContact: user?.emergencyContact // Fetch directly from User profile
+        };
+    }));
+
+    res.json(enrichedVehicles);
 });
 
 // @desc    Create a vehicle
 // @route   POST /vehicles
 // @access  Public
 const createVehicle = asyncHandler(async (req, res) => {
-    const { vehicleId, userId, vehicleName, vehicleNumber, vehicleType, notes, tagId, ownerName, ownerContactNumber, emergencyContactNumber, qrCodeUrl } = req.body;
+    const { vehicleId, userId, vehicleName, vehicleNumber, vehicleType, notes, tagId, ownerName, ownerContactNumber, qrCodeUrl } = req.body;
 
     if (!vehicleId || !userId || !vehicleNumber) {
         res.status(400);
@@ -49,7 +60,6 @@ const createVehicle = asyncHandler(async (req, res) => {
         tagId,
         ownerName,
         ownerContactNumber,
-        emergencyContactNumber,
         qrCodeUrl
     });
 
