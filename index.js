@@ -36,7 +36,8 @@ const io = new Server(server, {
 });
 
 // Import Interaction model for socket handlers
-const { Interaction } = require('./db');
+const { Interaction, User } = require('./db');
+const { sendPushNotification } = require('./utils/notifications');
 const mongoose = require('mongoose');
 
 io.on('connection', (socket) => {
@@ -91,6 +92,33 @@ io.on('connection', (socket) => {
             // Broadcast message to all clients in the room
             io.to(interactionId).emit('receive_message', newMessage);
             console.log(`Message sent in room ${interactionId}:`, text);
+
+            // Send Push Notification if recipient is not sender
+            // In a real app, we might check if user is online/in-room before sending
+            try {
+                const interactionData = await Interaction.findOne({ interactionId });
+                if (interactionData) {
+                    const recipientId = senderId === 'scanner' ? interactionData.userId : 'scanner';
+
+                    // Only send push to owner if scanner sends message
+                    if (senderId === 'scanner' || senderId !== interactionData.userId) {
+                        const user = await User.findOne({ userId: interactionData.userId });
+                        const vehicle = await Vehicle.findOne({ vehicleId: interactionData.vehicleId });
+
+                        if (user && user.pushToken && user.notificationPreferences.chatMessages) {
+                            const title = `New Message from ${vehicle ? vehicle.vehicleNumber : 'Tag Scanner'}`;
+                            await sendPushNotification(
+                                user.pushToken,
+                                title,
+                                text,
+                                { interactionId, type: 'new_message' }
+                            );
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error("Error sending message push:", error);
+            }
 
         } catch (error) {
             console.error('Error saving message:', error);

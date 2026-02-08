@@ -1,6 +1,7 @@
 const asyncHandler = require('express-async-handler');
 const mongoose = require('mongoose');
-const { Interaction, DeletedInteraction } = require('../db');
+const { Interaction, DeletedInteraction, User, Vehicle } = require('../db');
+const { sendPushNotification } = require('../utils/notifications');
 
 // @desc    Get interactions (supports query by userId or interactionId)
 // @route   GET /interactions
@@ -58,6 +59,25 @@ const createInteraction = asyncHandler(async (req, res) => {
     });
 
     if (interaction) {
+        // Send Push Notification to Owner
+        try {
+            const user = await User.findOne({ userId: userId });
+            const vehicle = await Vehicle.findOne({ vehicleId: vehicleId });
+
+            if (user && user.pushToken && user.notificationPreferences.newScans) {
+                const vehicleNum = vehicle ? vehicle.vehicleNumber : 'Unknown Vehicle';
+                await sendPushNotification(
+                    user.pushToken,
+                    'Vehicle Scanned!',
+                    `Your vehicle ${vehicleNum} has covered a new scan.`,
+                    { interactionId: interactionId, type: 'new_interaction' }
+                );
+            }
+        } catch (error) {
+            console.error('Error sending push notification:', error);
+            // Don't fail the request if notification fails
+        }
+
         res.status(201).json(interaction);
     } else {
         res.status(400);

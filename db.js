@@ -18,6 +18,7 @@ const userSchema = new mongoose.Schema({
     name: { type: String },
     email: { type: String },
     status: { type: String, default: 'active' },
+    pushToken: { type: String },
     notificationPreferences: {
         pushEnabled: { type: Boolean, default: true },
         emailEnabled: { type: Boolean, default: true },
