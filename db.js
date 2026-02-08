@@ -21,7 +21,15 @@ const userSchema = new mongoose.Schema({
     notificationPreferences: {
         pushEnabled: { type: Boolean, default: true },
         emailEnabled: { type: Boolean, default: true },
-        smsEnabled: { type: Boolean, default: false }
+        smsEnabled: { type: Boolean, default: false },
+        chatMessages: { type: Boolean, default: true },
+        newScans: { type: Boolean, default: true },
+        systemUpdates: { type: Boolean, default: true }
+    },
+    privacySettings: {
+        showPhoneToScanner: { type: Boolean, default: false },
+        showEmergencyContact: { type: Boolean, default: true },
+        allowChatNotifications: { type: Boolean, default: true }
     },
     acceptedPolicy: { type: Boolean, default: false },
     policyAcceptedAt: { type: Date },

@@ -48,14 +48,19 @@ const createReport = asyncHandler(async (req, res) => {
 // @route   GET /reports
 // @access  Public
 const getReports = asyncHandler(async (req, res) => {
-    const { interactionId } = req.query;
+    const { interactionId, userId } = req.query;
     let query = {};
 
     if (interactionId) {
         query.interactionId = interactionId;
     }
 
-    const reports = await Report.find(query);
+    if (userId) {
+        // Match reports where the interaction belonged to this user
+        query['interactionSnapshot.userId'] = userId;
+    }
+
+    const reports = await Report.find(query).sort({ createdAt: -1 });
     res.json(reports);
 });
 
