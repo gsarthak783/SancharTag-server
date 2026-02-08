@@ -1,6 +1,6 @@
 const asyncHandler = require('express-async-handler');
 const mongoose = require('mongoose');
-const { Interaction } = require('../db');
+const { Interaction, DeletedInteraction } = require('../db');
 
 // @desc    Get interactions (supports query by userId or interactionId)
 // @route   GET /interactions
@@ -116,7 +116,7 @@ const addMessage = asyncHandler(async (req, res) => {
     res.status(201).json(newMessage);
 });
 
-// @desc    Delete interaction
+// @desc    Delete interaction (archives first)
 // @route   DELETE /interactions/:id
 // @access  Public
 const deleteInteraction = asyncHandler(async (req, res) => {
@@ -128,9 +128,15 @@ const deleteInteraction = asyncHandler(async (req, res) => {
         throw new Error('Interaction not found');
     }
 
+    // Archive before deleting
+    await DeletedInteraction.create({
+        ...interaction.toObject(),
+        deletedAt: new Date()
+    });
+
     await interaction.deleteOne();
 
-    res.json({ id: interactionId });
+    res.json({ id: interactionId, message: 'Interaction deleted and archived' });
 });
 
 module.exports = {
