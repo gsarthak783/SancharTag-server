@@ -104,6 +104,21 @@ const DeletedUser = mongoose.model('DeletedUser', deletedUserSchema);
 const DeletedVehicle = mongoose.model('DeletedVehicle', deletedVehicleSchema);
 const DeletedInteraction = mongoose.model('DeletedInteraction', deletedInteractionSchema);
 
+// Report Schema
+const reportSchema = new mongoose.Schema({
+    reportId: { type: String, required: true, unique: true },
+    ticketId: { type: String, required: true, unique: true },
+    interactionId: { type: String, required: true },
+    reportedBy: { type: String, enum: ['owner', 'scanner'], required: true },
+    category: { type: String, required: true },
+    description: { type: String },
+    interactionSnapshot: { type: Object }, // Full interaction copy
+}, {
+    timestamps: true
+});
+
+const Report = mongoose.model('Report', reportSchema);
+
 module.exports = {
     connectDB,
     User,
@@ -111,5 +126,6 @@ module.exports = {
     Interaction,
     DeletedUser,
     DeletedVehicle,
-    DeletedInteraction
+    DeletedInteraction,
+    Report
 };

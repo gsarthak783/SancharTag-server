@@ -4,10 +4,12 @@ const {
     getInteractions,
     createInteraction,
     updateInteraction,
-    deleteInteraction
+    deleteInteraction,
+    addMessage
 } = require('../controllers/interactionController');
 
 router.route('/').get(getInteractions).post(createInteraction);
 router.route('/:id').patch(updateInteraction).delete(deleteInteraction);
+router.route('/:id/messages').post(addMessage);
 
 module.exports = router;

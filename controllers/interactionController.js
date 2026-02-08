@@ -1,15 +1,20 @@
 const asyncHandler = require('express-async-handler');
+const mongoose = require('mongoose');
 const { Interaction } = require('../db');
 
-// @desc    Get interactions (supports query by userId)
+// @desc    Get interactions (supports query by userId or interactionId)
 // @route   GET /interactions
 // @access  Public
 const getInteractions = asyncHandler(async (req, res) => {
-    const { userId } = req.query;
+    const { userId, interactionId } = req.query;
     let query = {};
 
     if (userId) {
         query.userId = userId;
+    }
+
+    if (interactionId) {
+        query.interactionId = interactionId;
     }
 
     const interactions = await Interaction.find(query);
@@ -81,6 +86,36 @@ const updateInteraction = asyncHandler(async (req, res) => {
 });
 
 
+// @desc    Add message to interaction
+// @route   POST /interactions/:id/messages
+// @access  Public
+const addMessage = asyncHandler(async (req, res) => {
+    const interactionId = req.params.id;
+    const { text, senderId, messageId } = req.body;
+
+    const interaction = await Interaction.findOne({ interactionId });
+
+    if (!interaction) {
+        res.status(404);
+        throw new Error('Interaction not found');
+    }
+
+    const newMessage = {
+        messageId: messageId || new mongoose.Types.ObjectId().toString(),
+        senderId,
+        text,
+        timestamp: new Date(),
+        isRead: false
+    };
+
+    interaction.messages.push(newMessage);
+    interaction.lastMessage = text;
+
+    await interaction.save();
+
+    res.status(201).json(newMessage);
+});
+
 // @desc    Delete interaction
 // @route   DELETE /interactions/:id
 // @access  Public
@@ -102,5 +137,6 @@ module.exports = {
     getInteractions,
     createInteraction,
     updateInteraction,
-    deleteInteraction
+    deleteInteraction,
+    addMessage
 };
