@@ -44,6 +44,22 @@ io.on('connection', (socket) => {
     socket.on('join_user_room', (userId) => {
         socket.join(userId);
         console.log(`Socket ${socket.id} joined user room: ${userId}`);
+
+        // Check for pending calls
+        if (global.pendingCalls && global.pendingCalls.has(userId)) {
+            const call = global.pendingCalls.get(userId);
+            // Check if expired (e.g., 30 seconds)
+            if (Date.now() - call.timestamp < 30000) {
+                console.log(`Emitting buffered call to ${userId}`);
+                socket.emit("callMade", {
+                    signal: call.signal,
+                    from: call.from,
+                    name: call.name
+                });
+            } else {
+                global.pendingCalls.delete(userId);
+            }
+        }
     });
 
     // Leave user room (on logout or disconnect)
@@ -212,10 +228,54 @@ io.on('connection', (socket) => {
 
 
     // WebRTC Signaling Events
-    socket.on("callUser", (data) => {
-        const { userToCall, signalData, from, name } = data;
-        io.to(userToCall).emit("callMade", { signal: signalData, from, name });
+
+    // Store pending calls: userId -> { signal, from, name, timestamp, vehicleNumber }
+    // Using a simple object/map outside string scope would be better but declaring here for scope access if needed, 
+    // actually 'pendingCalls' should be global to module.
+    // I will use a static map attached to the socket object or a global variable.
+    // Let's use a global variable at the top of the file/module scope in a real app, 
+    // but here I'll attach it to the 'io' object for persistence across connections? 
+    // No, 'io' is global.
+
+    // Let's assume 'pendingCalls' is defined at module level. I'll add it there.
+
+    socket.on("callUser", async (data) => {
+        const { userToCall, signalData, from, name, vehicleNumber } = data;
+
         console.log(`Call initiated by ${from} to ${userToCall}`);
+
+        // 1. Emit to online devices immediately
+        io.to(userToCall).emit("callMade", { signal: signalData, from, name });
+
+        // 2. Buffer the call for reconnecting devices (pending logic)
+        // Store in a global map (need to define it)
+        global.pendingCalls = global.pendingCalls || new Map();
+        global.pendingCalls.set(userToCall, {
+            signal: signalData,
+            from,
+            name,
+            timestamp: Date.now()
+        });
+
+        // 3. Send Push Notification
+        try {
+            const user = await User.findOne({ userId: userToCall });
+            if (user && user.pushToken) {
+                const title = "Incoming Call";
+                const body = vehicleNumber
+                    ? `Incoming call regarding ${vehicleNumber}`
+                    : `Incoming call from ${name}`;
+
+                await sendPushNotification(user.pushToken, title, body, {
+                    type: 'call',
+                    from,
+                    vehicleNumber
+                });
+                console.log(`Sent call push notification to ${user.name} (${userToCall})`);
+            }
+        } catch (error) {
+            console.error("Error sending call notification:", error);
+        }
     });
 
     socket.on("answerCall", (data) => {
