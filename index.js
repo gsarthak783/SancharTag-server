@@ -114,19 +114,17 @@ io.on('connection', (socket) => {
                 interactionId: interaction.interactionId,
                 contactType: interaction.contactType,
                 lastMessage: interaction.lastMessage,
-                status: interaction.status
+                status: interaction.status,
+                message: newMessage // Include full message for sync
             });
             console.log(`Emitted interaction_update to ${userId} for ${interactionId}`);
 
-            // Send Push Notification if recipient is not sender
-            // In a real app, we might check if user is online/in-room before sending
-            try {
-                const interactionData = await Interaction.findOne({ interactionId });
-                if (interactionData) {
-                    const recipientId = senderId === 'scanner' ? interactionData.userId : 'scanner';
-
-                    // Only send push to owner if scanner sends message
-                    if (senderId === 'scanner' || senderId !== interactionData.userId) {
+            // Send Push Notification
+            // Only send push to owner if scanner sends message
+            if (senderId === 'scanner') {
+                try {
+                    const interactionData = await Interaction.findOne({ interactionId });
+                    if (interactionData) {
                         const user = await User.findOne({ userId: interactionData.userId });
                         const vehicle = await Vehicle.findOne({ vehicleId: interactionData.vehicleId });
 
@@ -140,9 +138,9 @@ io.on('connection', (socket) => {
                             );
                         }
                     }
+                } catch (error) {
+                    console.error("Error sending message push:", error);
                 }
-            } catch (error) {
-                console.error("Error sending message push:", error);
             }
 
         } catch (error) {

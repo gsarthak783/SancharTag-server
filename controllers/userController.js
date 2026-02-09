@@ -91,6 +91,14 @@ const updateUser = asyncHandler(async (req, res) => {
         throw new Error('User not found');
     }
 
+    // If updating pushToken, ensure it's unique by removing it from other users
+    if (req.body.pushToken) {
+        await User.updateMany(
+            { pushToken: req.body.pushToken, userId: { $ne: userId } },
+            { $unset: { pushToken: 1 } }
+        );
+    }
+
     const updatedUser = await User.findOneAndUpdate({ userId: userId }, req.body, {
         new: true,
     });
