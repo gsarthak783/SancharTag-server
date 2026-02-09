@@ -240,9 +240,33 @@ io.on('connection', (socket) => {
     // Let's assume 'pendingCalls' is defined at module level. I'll add it there.
 
     socket.on("callUser", async (data) => {
-        const { userToCall, signalData, from, name, vehicleNumber } = data;
+        const { userToCall, signalData, from, name, vehicleNumber, interactionId } = data;
 
         console.log(`Call initiated by ${from} to ${userToCall}`);
+
+        // Update Interaction Status if interactionId is provided
+        if (interactionId) {
+            try {
+                const interaction = await Interaction.findOne({ interactionId });
+                if (interaction) {
+                    interaction.contactType = 'call';
+                    if (interaction.status !== 'active') {
+                        interaction.status = 'active';
+                        interaction.resolvedAt = undefined;
+                    }
+                    await interaction.save();
+
+                    // Emit update to owner
+                    io.to(userToCall).emit('interaction_update', {
+                        interactionId,
+                        contactType: 'call',
+                        status: 'active'
+                    });
+                }
+            } catch (error) {
+                console.error("Error updating interaction on call start:", error);
+            }
+        }
 
         // 1. Emit to online devices immediately
         io.to(userToCall).emit("callMade", { signal: signalData, from, name });
@@ -289,10 +313,31 @@ io.on('connection', (socket) => {
         // console.log(`ICE candidate exchanged between ${socket.id} and ${to}`);
     });
 
-    socket.on("endCall", (data) => {
-        const { to } = data;
+    socket.on("endCall", async (data) => {
+        const { to, interactionId } = data; // scanner passes interactionId if available
         io.to(to).emit("callEnded");
         console.log(`Call ended by ${socket.id}`);
+
+        if (interactionId) {
+            try {
+                const interaction = await Interaction.findOne({ interactionId });
+                if (interaction && interaction.status === 'active') {
+                    interaction.status = 'resolved';
+                    interaction.resolvedAt = new Date();
+                    await interaction.save();
+
+                    // Notify owner
+                    if (interaction.userId) {
+                        io.to(interaction.userId).emit('interaction_update', {
+                            interactionId,
+                            status: 'resolved'
+                        });
+                    }
+                }
+            } catch (error) {
+                console.error("Error resolving interaction on call end:", error);
+            }
+        }
     });
 
     // Leave room
