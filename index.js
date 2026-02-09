@@ -168,6 +168,14 @@ io.on('connection', (socket) => {
                     endedBy
                 });
                 console.log(`Session ended (resolved) in room ${interactionId} by ${endedBy}`);
+
+                // Emit status update to owner's global room
+                if (interaction.userId) {
+                    io.to(interaction.userId).emit('interaction_update', {
+                        interactionId: interaction.interactionId,
+                        status: 'resolved'
+                    });
+                }
             }
         } catch (error) {
             console.error('Error ending session:', error);
@@ -185,6 +193,23 @@ io.on('connection', (socket) => {
             reportedBy
         });
         console.log(`Session reported in room ${interactionId} by ${reportedBy}`);
+
+        // Emit status update to owner's global room
+        // Need to find interaction first to get userId
+        try {
+            const interaction = await Interaction.findOne({ interactionId });
+            if (interaction && interaction.userId) {
+                interaction.status = 'reported'; // Update status in memory just for emission if needed, though usually handled by API
+                // Note: The API likely handles the DB update for report, but socket emits the event
+
+                io.to(interaction.userId).emit('interaction_update', {
+                    interactionId: interactionId,
+                    status: 'reported'
+                });
+            }
+        } catch (error) {
+            console.error('Error broadcasting report status:', error);
+        }
     });
 
     // Leave room
