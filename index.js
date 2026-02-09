@@ -86,6 +86,12 @@ io.on('connection', (socket) => {
                 }
             }
 
+            // Update contactType to 'chat' on first message (was 'scan')
+            const isFirstMessage = interaction.messages.length === 0;
+            if (isFirstMessage && interaction.contactType === 'scan') {
+                interaction.contactType = 'chat';
+            }
+
             const newMessage = {
                 messageId: new mongoose.Types.ObjectId().toString(),
                 senderId,
@@ -98,9 +104,19 @@ io.on('connection', (socket) => {
             interaction.lastMessage = text;
             await interaction.save();
 
-            // Broadcast message to all clients in the room
+            // Broadcast message to all clients in the chat room
             io.to(interactionId).emit('receive_message', newMessage);
             console.log(`Message sent in room ${interactionId}:`, text);
+
+            // Emit update to owner's global user room for real-time list updates
+            const userId = interaction.userId;
+            io.to(userId).emit('interaction_update', {
+                interactionId: interaction.interactionId,
+                contactType: interaction.contactType,
+                lastMessage: interaction.lastMessage,
+                status: interaction.status
+            });
+            console.log(`Emitted interaction_update to ${userId} for ${interactionId}`);
 
             // Send Push Notification if recipient is not sender
             // In a real app, we might check if user is online/in-room before sending
