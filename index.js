@@ -210,6 +210,31 @@ io.on('connection', (socket) => {
         }
     });
 
+
+    // WebRTC Signaling Events
+    socket.on("callUser", (data) => {
+        const { userToCall, signalData, from, name } = data;
+        io.to(userToCall).emit("callMade", { signal: signalData, from, name });
+        console.log(`Call initiated by ${from} to ${userToCall}`);
+    });
+
+    socket.on("answerCall", (data) => {
+        io.to(data.to).emit("callAccepted", data.signal);
+        console.log(`Call accepted by ${socket.id}, signal sent to ${data.to}`);
+    });
+
+    socket.on("iceCandidate", (data) => {
+        const { to, candidate } = data;
+        io.to(to).emit("iceCandidate", { candidate, from: socket.id });
+        // console.log(`ICE candidate exchanged between ${socket.id} and ${to}`);
+    });
+
+    socket.on("endCall", (data) => {
+        const { to } = data;
+        io.to(to).emit("callEnded");
+        console.log(`Call ended by ${socket.id}`);
+    });
+
     // Leave room
     socket.on('leave_room', (interactionId) => {
         socket.leave(interactionId);
