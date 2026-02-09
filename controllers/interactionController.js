@@ -2,6 +2,7 @@ const asyncHandler = require('express-async-handler');
 const mongoose = require('mongoose');
 const { Interaction, DeletedInteraction, User, Vehicle } = require('../db');
 const { sendPushNotification } = require('../utils/notifications');
+const { emitToUser } = require('../socket');
 
 // @desc    Get interactions (supports query by userId or interactionId)
 // @route   GET /interactions
@@ -73,6 +74,9 @@ const createInteraction = asyncHandler(async (req, res) => {
                     { interactionId: interactionId, type: 'new_interaction' }
                 );
             }
+
+            // Emit to user's room for real-time update
+            emitToUser(userId, 'new_interaction', interaction);
         } catch (error) {
             console.error('Error sending push notification:', error);
             // Don't fail the request if notification fails

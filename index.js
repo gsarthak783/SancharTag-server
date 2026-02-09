@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const http = require('http');
-const { Server } = require("socket.io");
+const { initSocket } = require('./socket');
 
 const { connectDB } = require('./db');
 const { errorHandler } = require('./middleware/errorMiddleware');
@@ -28,14 +28,10 @@ app.use('/reports', require('./routes/reportRoutes'));
 app.use('/', require('./routes/archiveRoutes'));
 
 
-const io = new Server(server, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
-});
+// Initialize Socket.IO
+const io = initSocket(server);
 
-// Import Interaction model for socket handlers
+// Import models for socket handlers
 const { Interaction, User, Vehicle } = require('./db');
 const { sendPushNotification } = require('./utils/notifications');
 const mongoose = require('mongoose');
@@ -43,7 +39,19 @@ const mongoose = require('mongoose');
 io.on('connection', (socket) => {
     console.log('A user connected:', socket.id);
 
-    // Join a specific interaction room
+    // Join user's personal room for global updates (new scans, messages)
+    socket.on('join_user_room', (userId) => {
+        socket.join(`user_${userId}`);
+        console.log(`Socket ${socket.id} joined user room: user_${userId}`);
+    });
+
+    // Leave user room (on logout or disconnect)
+    socket.on('leave_user_room', (userId) => {
+        socket.leave(`user_${userId}`);
+        console.log(`Socket ${socket.id} left user room: user_${userId}`);
+    });
+
+    // Join a specific interaction room (for chat)
     socket.on('join_room', (interactionId) => {
         socket.join(interactionId);
         console.log(`Socket ${socket.id} joined room: ${interactionId}`);
