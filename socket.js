@@ -23,8 +23,9 @@ const getIO = () => {
 // Emit to a specific user's room
 const emitToUser = (userId, event, data) => {
     if (io) {
-        io.to(`user_${userId}`).emit(event, data);
-        console.log(`Emitted ${event} to user_${userId}`);
+        // userId already contains the "user_" prefix, use directly as room name
+        io.to(userId).emit(event, data);
+        console.log(`Emitted ${event} to ${userId}`);
     }
 };
 

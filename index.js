@@ -40,15 +40,16 @@ io.on('connection', (socket) => {
     console.log('A user connected:', socket.id);
 
     // Join user's personal room for global updates (new scans, messages)
+    // userId already contains "user_" prefix, use directly as room name
     socket.on('join_user_room', (userId) => {
-        socket.join(`user_${userId}`);
-        console.log(`Socket ${socket.id} joined user room: user_${userId}`);
+        socket.join(userId);
+        console.log(`Socket ${socket.id} joined user room: ${userId}`);
     });
 
     // Leave user room (on logout or disconnect)
     socket.on('leave_user_room', (userId) => {
-        socket.leave(`user_${userId}`);
-        console.log(`Socket ${socket.id} left user room: user_${userId}`);
+        socket.leave(userId);
+        console.log(`Socket ${socket.id} left user room: ${userId}`);
     });
 
     // Join a specific interaction room (for chat)
