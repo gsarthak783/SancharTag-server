@@ -23,6 +23,7 @@ app.use('/users', require('./routes/userRoutes'));
 app.use('/vehicles', require('./routes/vehicleRoutes'));
 app.use('/interactions', require('./routes/interactionRoutes'));
 app.use('/reports', require('./routes/reportRoutes'));
+app.use('/auth', require('./routes/authRoutes'));
 
 // Archive Routes
 app.use('/', require('./routes/archiveRoutes'));
