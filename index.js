@@ -102,6 +102,7 @@ io.on('connection', (socket) => {
                 messageId: new mongoose.Types.ObjectId().toString(),
                 senderId,
                 text,
+                type: 'text',
                 timestamp: new Date(),
                 isRead: false
             };
@@ -297,6 +298,31 @@ io.on('connection', (socket) => {
         } catch (error) {
             console.error("Error sending call notification:", error);
         }
+
+        // 4. Log the call in chat history
+        try {
+            const interaction = await Interaction.findOne({ interactionId });
+            if (interaction) {
+                const callMessage = {
+                    messageId: new mongoose.Types.ObjectId().toString(),
+                    senderId: 'scanner',
+                    text: 'Voice Call Initiated',
+                    type: 'call',
+                    timestamp: new Date(),
+                    isRead: false
+                };
+
+                interaction.messages.push(callMessage);
+                interaction.lastMessage = 'Voice Call';
+                await interaction.save();
+
+                // Emit signal to update chat UI immediately
+                io.to(interactionId).emit('receive_message', callMessage);
+            }
+        } catch (error) {
+            console.error("Error logging call message:", error);
+        }
+
     });
 
     socket.on("answerCall", (data) => {

@@ -65,6 +65,7 @@ const messageSchema = new mongoose.Schema({
     messageId: { type: String },
     senderId: { type: String },
     text: { type: String },
+    type: { type: String, enum: ['text', 'call'], default: 'text' },
     timestamp: { type: Date, default: Date.now },
     isRead: { type: Boolean, default: false }
 }, { _id: false });
