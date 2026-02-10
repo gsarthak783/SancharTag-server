@@ -318,25 +318,30 @@ io.on('connection', (socket) => {
         if (interactionId) {
             try {
                 const interaction = await Interaction.findOne({ interactionId });
-                if (interaction && interaction.status === 'active') {
-                    interaction.status = 'resolved';
-                    interaction.resolvedAt = new Date();
-                    await interaction.save();
+                if (interaction) {
+                    // Update status to resolved (allow if active, call, chat or already resolved - just update ts)
+                    // Ensuring we mark it resolved if it was active or call
+                    if (interaction.status !== 'resolved' && interaction.status !== 'reported') {
+                        interaction.status = 'resolved';
+                        interaction.resolvedAt = new Date();
+                        await interaction.save();
 
-                    // Notify owner
-                    if (interaction.userId) {
-                        io.to(interaction.userId).emit('interaction_update', {
-                            interactionId,
-                            status: 'resolved'
+                        console.log(`Interaction ${interactionId} resolved via endCall`);
+
+                        // Notify owner
+                        if (interaction.userId) {
+                            io.to(interaction.userId).emit('interaction_update', {
+                                interactionId,
+                                status: 'resolved'
+                            });
+                        }
+
+                        // Notify scanner
+                        io.to(interactionId).emit('session_ended', {
+                            status: 'resolved',
+                            endedBy: 'system'
                         });
                     }
-
-                    // STRICT SESSION CONTROL: Notify scanner immediately
-                    io.to(interactionId).emit('session_ended', {
-                        status: 'resolved',
-                        endedBy: 'system' // or 'call_end'
-                    });
-                    console.log(`Session resolved automatically after call end: ${interactionId}`);
                 }
             } catch (error) {
                 console.error("Error resolving interaction on call end:", error);
