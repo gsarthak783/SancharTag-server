@@ -86,20 +86,10 @@ io.on('connection', (socket) => {
                 return;
             }
 
-            // Only allow messages if status is active, or if scanner is reactivating a resolved session
+            // STRICT SESSION CONTROL: Only allow messages if status is active
             if (interaction.status !== 'active') {
-                if (senderId === 'scanner' && ['resolved', 'ignored', 'reported'].includes(interaction.status)) {
-                    interaction.status = 'active';
-                    interaction.resolvedAt = undefined;
-                    // Emit status update to owner so they know it's active again
-                    io.to(interactionId).emit('status_update', {
-                        interactionId,
-                        status: 'active'
-                    });
-                } else {
-                    socket.emit('error', { message: 'Chat session has ended' });
-                    return;
-                }
+                socket.emit('error', { message: 'Session has ended. You cannot send more messages.' });
+                return;
             }
 
             // Update contactType to 'chat' on first message (was 'scan')
@@ -249,11 +239,13 @@ io.on('connection', (socket) => {
             try {
                 const interaction = await Interaction.findOne({ interactionId });
                 if (interaction) {
-                    interaction.contactType = 'call';
+                    // STRICT SESSION CONTROL: Block call if not active
                     if (interaction.status !== 'active') {
-                        interaction.status = 'active';
-                        interaction.resolvedAt = undefined;
+                        socket.emit('error', { message: 'Session has ended. You cannot make calls.' });
+                        return;
                     }
+
+                    interaction.contactType = 'call';
                     await interaction.save();
 
                     // Emit update to owner
@@ -262,9 +254,14 @@ io.on('connection', (socket) => {
                         contactType: 'call',
                         status: 'active'
                     });
+                } else {
+                    // Interaction not found but ID provided?
+                    console.warn(`Interaction ${interactionId} not found during call attempt`);
                 }
             } catch (error) {
                 console.error("Error updating interaction on call start:", error);
+                // Should we block the call if error? 
+                // Currently proceeding, but maybe we should block.
             }
         }
 
@@ -333,10 +330,23 @@ io.on('connection', (socket) => {
                             status: 'resolved'
                         });
                     }
+
+                    // STRICT SESSION CONTROL: Notify scanner immediately
+                    io.to(interactionId).emit('session_ended', {
+                        status: 'resolved',
+                        endedBy: 'system' // or 'call_end'
+                    });
+                    console.log(`Session resolved automatically after call end: ${interactionId}`);
                 }
             } catch (error) {
                 console.error("Error resolving interaction on call end:", error);
             }
+        }
+
+        // Remove from pending calls if exists
+        if (global.pendingCalls && global.pendingCalls.has(to)) {
+            console.log(`Removing pending call for ${to} as it was ended/cancelled`);
+            global.pendingCalls.delete(to);
         }
     });
 
