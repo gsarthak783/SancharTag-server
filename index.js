@@ -342,36 +342,8 @@ io.on('connection', (socket) => {
         console.log(`Call ended by ${socket.id}`);
 
         if (interactionId) {
-            try {
-                const interaction = await Interaction.findOne({ interactionId });
-                if (interaction) {
-                    // Update status to resolved (allow if active, call, chat or already resolved - just update ts)
-                    // Ensuring we mark it resolved if it was active or call
-                    if (interaction.status !== 'resolved' && interaction.status !== 'reported') {
-                        interaction.status = 'resolved';
-                        interaction.resolvedAt = new Date();
-                        await interaction.save();
-
-                        console.log(`Interaction ${interactionId} resolved via endCall`);
-
-                        // Notify owner
-                        if (interaction.userId) {
-                            io.to(interaction.userId).emit('interaction_update', {
-                                interactionId,
-                                status: 'resolved'
-                            });
-                        }
-
-                        // Notify scanner
-                        io.to(interactionId).emit('session_ended', {
-                            status: 'resolved',
-                            endedBy: 'system'
-                        });
-                    }
-                }
-            } catch (error) {
-                console.error("Error resolving interaction on call end:", error);
-            }
+            // We do NOT auto-resolve on endCall anymore per user request.
+            // Just notify that call ended.
         }
 
         // Remove from pending calls if exists
