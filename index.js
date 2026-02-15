@@ -93,6 +93,19 @@ io.on('connection', (socket) => {
                 return;
             }
 
+            // Check if blocked
+            if (senderId === 'scanner') {
+                // In a real scenario, we might need to look up the scanner's phone number from the interaction or session
+                // But interaction schema stores scanner details.
+                if (interaction.scanner && interaction.scanner.phoneNumber) {
+                    const user = await User.findOne({ userId: interaction.userId });
+                    if (user && user.blockedNumbers && user.blockedNumbers.includes(interaction.scanner.phoneNumber)) {
+                        socket.emit('error', { message: 'You have been blocked by this user.' });
+                        return;
+                    }
+                }
+            }
+
             // Update contactType to 'chat' on first message (was 'scan')
             const isFirstMessage = interaction.messages.length === 0;
             if (isFirstMessage && interaction.contactType === 'scan') {
@@ -245,6 +258,15 @@ io.on('connection', (socket) => {
                     if (interaction.status !== 'active') {
                         socket.emit('error', { message: 'Session has ended. You cannot make calls.' });
                         return;
+                    }
+
+                    // Check if blocked
+                    if (interaction.scanner && interaction.scanner.phoneNumber) {
+                        const user = await User.findOne({ userId: interaction.userId });
+                        if (user && user.blockedNumbers && user.blockedNumbers.includes(interaction.scanner.phoneNumber)) {
+                            socket.emit('error', { message: 'You have been blocked by this user.' });
+                            return;
+                        }
                     }
 
                     interaction.contactType = 'call';

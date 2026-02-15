@@ -59,6 +59,13 @@ const createInteraction = asyncHandler(async (req, res) => {
         scanner
     });
 
+    // Check for blocking
+    const user = await User.findOne({ userId });
+    if (user && user.blockedNumbers && user.blockedNumbers.includes(scanner.phoneNumber)) {
+        res.status(403);
+        throw new Error('You have been blocked by this user.');
+    }
+
     if (interaction) {
         // Send Push Notification to Owner
         try {

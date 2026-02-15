@@ -123,9 +123,86 @@ const deleteUser = asyncHandler(async (req, res) => {
     res.json({ id: userId });
 });
 
+// @desc    Block a user (phone number)
+// @route   POST /users/:id/block
+// @access  Private
+const blockUser = asyncHandler(async (req, res) => {
+    const userId = req.params.id;
+    const { phoneNumber } = req.body;
+
+    if (!phoneNumber) {
+        res.status(400);
+        throw new Error('Phone number is required');
+    }
+
+    const user = await User.findOne({ userId });
+
+    if (!user) {
+        res.status(404);
+        throw new Error('User not found');
+    }
+
+    if (!user.blockedNumbers) {
+        user.blockedNumbers = [];
+    }
+
+    if (!user.blockedNumbers.includes(phoneNumber)) {
+        user.blockedNumbers.push(phoneNumber);
+        await user.save();
+    }
+
+    res.json({ message: 'User blocked successfully', blockedNumbers: user.blockedNumbers });
+});
+
+// @desc    Unblock a user (phone number)
+// @route   POST /users/:id/unblock
+// @access  Private
+const unblockUser = asyncHandler(async (req, res) => {
+    const userId = req.params.id;
+    const { phoneNumber } = req.body;
+
+    if (!phoneNumber) {
+        res.status(400);
+        throw new Error('Phone number is required');
+    }
+
+    const user = await User.findOne({ userId });
+
+    if (!user) {
+        res.status(404);
+        throw new Error('User not found');
+    }
+
+    if (user.blockedNumbers) {
+        user.blockedNumbers = user.blockedNumbers.filter(num => num !== phoneNumber);
+        await user.save();
+    }
+
+    res.json({ message: 'User unblocked successfully', blockedNumbers: user.blockedNumbers });
+});
+
+// @desc    Get blocked users
+// @route   GET /users/:id/blocked
+// @access  Private
+const getBlockedUsers = asyncHandler(async (req, res) => {
+    const userId = req.params.id;
+
+    const user = await User.findOne({ userId });
+
+    if (!user) {
+        res.status(404);
+        throw new Error('User not found');
+    }
+
+    res.json(user.blockedNumbers || []);
+});
+
 module.exports = {
     getUsers,
     createUser,
     updateUser,
     deleteUser,
+    blockUser,
+    unblockUser,
+    getBlockedUsers
 };
