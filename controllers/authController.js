@@ -1,5 +1,13 @@
 const asyncHandler = require('express-async-handler');
 const { User, Otp } = require('../db');
+const jwt = require('jsonwebtoken');
+
+// Generate JWT
+const generateToken = (id) => {
+    return jwt.sign({ id }, process.env.JWT_SECRET, {
+        expiresIn: '30d',
+    });
+};
 
 // @desc    Send OTP to phone number
 // @route   POST /auth/send-otp
@@ -56,19 +64,27 @@ const verifyOtp = asyncHandler(async (req, res) => {
     let isNewUser = false;
 
     if (!user) {
+        // Create user if not exists (Auto-signup for now or handle in separate flow)
+        // For now, we return isNewUser=true so frontend can redirect to onboarding
+        // But we need a user ID to generate a token usually.
+        // Let's creating a placeholder user or handle token generation after full profile creation?
+        // The prompt implies we want a token NOW.
+        // Let's create the user if they don't exist, with just the phone number.
+        user = await User.create({
+            phoneNumber,
+            isNewUser: true
+        });
         isNewUser = true;
     }
 
-    // Clean up used OTPs for this number (optional, but good practice to prevent replay if we didn't have strict TTL)
-    // await Otp.deleteMany({ phoneNumber }); 
-    // Actually, keeping them until expiry is fine, or one-time use. 
-    // Let's delete the specific used one to prevent reuse.
+    // Clean up used OTPs
     await validOtp.deleteOne();
 
     res.status(200).json({
         success: true,
         isNewUser,
-        user
+        user,
+        token: generateToken(user._id)
     });
 });
 
