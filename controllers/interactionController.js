@@ -61,7 +61,9 @@ const createInteraction = asyncHandler(async (req, res) => {
 
     // Check for blocking
     const user = await User.findOne({ userId });
-    if (user && user.blockedNumbers && user.blockedNumbers.includes(scanner.phoneNumber)) {
+
+    // Check if blocked (schema is array of objects { phoneNumber, name })
+    if (user && user.blockedNumbers && user.blockedNumbers.some(entry => entry.phoneNumber === scanner.phoneNumber)) {
         res.status(403);
         throw new Error('You have been blocked by this user.');
     }

@@ -99,7 +99,8 @@ io.on('connection', (socket) => {
                 // But interaction schema stores scanner details.
                 if (interaction.scanner && interaction.scanner.phoneNumber) {
                     const user = await User.findOne({ userId: interaction.userId });
-                    if (user && user.blockedNumbers && user.blockedNumbers.includes(interaction.scanner.phoneNumber)) {
+                    // Check if blocked (schema is array of objects { phoneNumber, name })
+                    if (user && user.blockedNumbers && user.blockedNumbers.some(entry => entry.phoneNumber === interaction.scanner.phoneNumber)) {
                         socket.emit('error', { message: 'You have been blocked by this user.' });
                         return;
                     }
@@ -263,7 +264,8 @@ io.on('connection', (socket) => {
                     // Check if blocked
                     if (interaction.scanner && interaction.scanner.phoneNumber) {
                         const user = await User.findOne({ userId: interaction.userId });
-                        if (user && user.blockedNumbers && user.blockedNumbers.includes(interaction.scanner.phoneNumber)) {
+                        // Check if blocked (schema is array of objects { phoneNumber, name })
+                        if (user && user.blockedNumbers && user.blockedNumbers.some(entry => entry.phoneNumber === interaction.scanner.phoneNumber)) {
                             socket.emit('error', { message: 'You have been blocked by this user.' });
                             return;
                         }
