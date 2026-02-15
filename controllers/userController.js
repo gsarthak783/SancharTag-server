@@ -128,7 +128,7 @@ const deleteUser = asyncHandler(async (req, res) => {
 // @access  Private
 const blockUser = asyncHandler(async (req, res) => {
     const userId = req.params.id;
-    const { phoneNumber } = req.body;
+    const { phoneNumber, name } = req.body;
 
     if (!phoneNumber) {
         res.status(400);
@@ -146,9 +146,21 @@ const blockUser = asyncHandler(async (req, res) => {
         user.blockedNumbers = [];
     }
 
-    if (!user.blockedNumbers.includes(phoneNumber)) {
-        user.blockedNumbers.push(phoneNumber);
+    // Check if already blocked
+    const alreadyBlocked = user.blockedNumbers.some(entry => entry.phoneNumber === phoneNumber);
+
+    if (!alreadyBlocked) {
+        user.blockedNumbers.push({ phoneNumber, name: name || 'Unknown' });
         await user.save();
+    } else {
+        // Optionally update name if it was missing or changed
+        if (name) {
+            const index = user.blockedNumbers.findIndex(entry => entry.phoneNumber === phoneNumber);
+            if (index !== -1) {
+                user.blockedNumbers[index].name = name;
+                await user.save();
+            }
+        }
     }
 
     res.json({ message: 'User blocked successfully', blockedNumbers: user.blockedNumbers });
@@ -174,7 +186,8 @@ const unblockUser = asyncHandler(async (req, res) => {
     }
 
     if (user.blockedNumbers) {
-        user.blockedNumbers = user.blockedNumbers.filter(num => num !== phoneNumber);
+        // Filter out the object with matching phoneNumber
+        user.blockedNumbers = user.blockedNumbers.filter(entry => entry.phoneNumber !== phoneNumber);
         await user.save();
     }
 

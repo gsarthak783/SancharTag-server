@@ -36,7 +36,10 @@ const userSchema = new mongoose.Schema({
     policyAcceptedAt: { type: Date },
     emergencyContact: { type: String },
     bloodGroup: { type: String },
-    blockedNumbers: [{ type: String }]
+    blockedNumbers: [{
+        phoneNumber: { type: String, required: true },
+        name: { type: String }
+    }]
 }, {
     timestamps: true // Adds createdAt and updatedAt automatically
 });
@@ -77,7 +80,7 @@ const interactionSchema = new mongoose.Schema({
     vehicleId: { type: String, required: true }, // Reference to vehicle
     type: { type: String, required: true }, // e.g., Wrong Parking
     contactType: { type: String, required: true }, // e.g., chat, scan
-    status: { type: String, default: 'active' }, // active, resolved, missed, ignored
+    status: { type: String, default: 'active' }, // active, resolved, missed, ignored, blocked
     resolvedAt: { type: Date },
 
     // Scanner details captured during interaction
