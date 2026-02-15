@@ -19,8 +19,25 @@ const getVehicles = asyncHandler(async (req, res) => {
     const vehicles = await Vehicle.find(query).lean();
 
     // Enrich with user privacy settings and emergency contact
+    // Also filter out if the requester (scannerPhoneNumber) is blocked
+    const { scannerPhoneNumber } = req.query;
+
     const enrichedVehicles = await Promise.all(vehicles.map(async (vehicle) => {
         const user = await User.findOne({ userId: vehicle.userId }).lean();
+
+        // Check if scanner is blocked by this owner
+        if (scannerPhoneNumber && user?.blockedNumbers?.some(entry => entry.phoneNumber === scannerPhoneNumber)) {
+            // If blocked, return a special flag or null, or handle at the route level
+            // Since we're mapping, let's mark it.
+            return {
+                ...vehicle,
+                isBlocked: true, // Frontend should handle this
+                vehicleNumber: 'BLOCKED', // Mask data
+                ownerName: 'BLOCKED',
+                notes: 'You have been blocked by this user.'
+            };
+        }
+
         return {
             ...vehicle,
             showEmergencyContact: user?.privacySettings?.showEmergencyContact ?? true,

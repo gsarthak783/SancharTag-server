@@ -2,7 +2,7 @@ const asyncHandler = require('express-async-handler');
 const mongoose = require('mongoose');
 const { Interaction, DeletedInteraction, User, Vehicle } = require('../db');
 const { sendPushNotification } = require('../utils/notifications');
-const { emitToUser } = require('../socket');
+const { emitToRoom, emitToUser } = require('../socket');
 
 // @desc    Get interactions (supports query by userId or interactionId)
 // @route   GET /interactions
