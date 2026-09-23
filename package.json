@@ -24,7 +24,7 @@
     "libphonenumber-js": "^1.12.31",
     "mongoose": "^9.1.6",
     "morgan": "^1.10.0",
-    "rate-limiter-flexible": "^5.0.5",
+    "rate-limiter-flexible": "^11.2.1",
     "socket.io": "^4.8.3",
     "winston": "^3.17.0"
   },
