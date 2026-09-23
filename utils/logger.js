@@ -27,6 +27,11 @@ const consoleFormat = winston.format.combine(
     })
 );
 
+// Uncaught exceptions are handled at the process level in bin/www (which logs
+// through this logger and decides whether to exit). Winston's own
+// handleExceptions/exceptionHandlers are deliberately NOT used: its
+// ExceptionStream ends after the first exception and a second one in quick
+// succession crashes the process with an unhandled 'write after end'.
 const logger = winston.createLogger({
     level: config.logLevel,
     transports: [
@@ -34,37 +39,15 @@ const logger = winston.createLogger({
             level: 'info',
             filename: path.join(__dirname, '../logs/all-logs.log'),
             format: fileFormat,
-            handleExceptions: true,
             maxsize: LOG_FILE_MAX_SIZE,
             maxFiles: LOG_FILE_MAX_COUNT,
             tailable: true,
         }),
         new winston.transports.Console({
             format: consoleFormat,
-            handleExceptions: true,
-        }),
-    ],
-    exceptionHandlers: [
-        new winston.transports.File({
-            filename: path.join(__dirname, '../logs/exceptions.log'),
-            format: fileFormat,
-            maxsize: LOG_FILE_MAX_SIZE,
-            maxFiles: LOG_FILE_MAX_COUNT,
-            tailable: true,
         }),
     ],
     exitOnError: false,
-});
-
-// A second uncaughtException while the first is still being written would emit
-// an unhandled 'write after end' on the exception transport's stream and crash
-// the process despite exitOnError:false. Swallow those.
-logger.exceptions.handlers.forEach((transport) => {
-    if (transport._stream && typeof transport._stream.on === 'function') {
-        transport._stream.on('error', (err) => {
-            process.stderr.write(`[logger] exception transport stream error (suppressed): ${err.message}\n`);
-        });
-    }
 });
 
 // Stream interface for morgan.
