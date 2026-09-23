@@ -30,6 +30,12 @@ exports.list = async (req, res) => {
 exports.getOne = async (req, res) => {
     try {
         const { interactionId } = req.params;
+        // Scanner scope check FIRST — an out-of-scope token learns nothing,
+        // not even whether the interaction exists.
+        if (req.scanner && req.scanner.interactionId !== interactionId) {
+            throw errorCodes.INVALID_INTERACTION_TOKEN;
+        }
+
         const interaction = await interactionService.getByInteractionId(interactionId);
         if (!interaction) throw errorCodes.INTERACTION_NOT_FOUND;
 
@@ -37,7 +43,6 @@ exports.getOne = async (req, res) => {
             if (interaction.userId !== req.user.userId) throw errorCodes.NOT_OWNER;
             return handleResponse({ res, data: interaction });
         }
-        if (req.scanner.interactionId !== interactionId) throw errorCodes.INVALID_INTERACTION_TOKEN;
         handleResponse({ res, data: scannerView(interaction) });
     } catch (error) {
         handleError({ res, error });
