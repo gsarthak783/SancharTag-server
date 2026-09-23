@@ -2,9 +2,12 @@ const userService = require('../dbServices/userService');
 const vehicleService = require('../dbServices/vehicleService');
 const interactionService = require('../dbServices/interactionService');
 const archiveService = require('../dbServices/archiveService');
+const messageService = require('../services/messageService');
 const errorCodes = require('../config/errorCodes');
+const logger = require('../utils/logger');
 const { handleResponse, handleError } = require('../utils/requestHandlers');
 const { pick } = require('../utils/pick');
+const { INTERACTION_STATUS, SENDER_ROLE } = require('../constants/interaction');
 
 // Writable profile fields — the mass-assignment boundary. phoneNumber, status,
 // userId, jwtSalt are NOT here by design.
@@ -72,6 +75,18 @@ exports.block = async ({ user, body: { phoneNumber, name } }, res) => {
     try {
         if (phoneNumber === user.phoneNumber) throw errorCodes.VALIDATION_FAILED;
         await userService.block(user.userId, { phoneNumber, name });
+
+        // Blocking also closes any open sessions with that scanner ('blocked'
+        // is system-set — not reachable via PATCH /status by design).
+        const open = await interactionService.findActiveByScannerPhone(user.userId, phoneNumber);
+        for (const { interactionId } of open) {
+            await messageService.updateStatusAndNotify({
+                interactionId,
+                status: INTERACTION_STATUS.BLOCKED,
+                endedBy: SENDER_ROLE.OWNER,
+            }).catch((err) => logger.error('block: session close failed', { interactionId, error: err.message }));
+        }
+
         const data = await userService.getBlockedNumbers(user.userId);
         handleResponse({ res, message: 'Number blocked', data });
     } catch (error) {

@@ -100,6 +100,12 @@ exports.markRead = (interactionId) => Model.findOneAndUpdate(
     },
 );
 
+// Open sessions with a given scanner phone — used when the owner blocks them.
+exports.findActiveByScannerPhone = (userId, phoneNumber) => Model.find(
+    { userId, 'scanner.phoneNumber': phoneNumber, status: INTERACTION_STATUS.ACTIVE },
+    { interactionId: 1 },
+).lean();
+
 exports.remove = (interactionId) => Model.findOneAndDelete({ interactionId }).lean();
 
 exports.removeAllByUser = async (userId) => {

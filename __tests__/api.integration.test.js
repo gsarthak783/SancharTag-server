@@ -183,13 +183,26 @@ describe('SancharTag API — end to end', () => {
         expect(rejected.body.code).toBe('SESSION_ENDED');
     });
 
-    test('blocked scanner cannot create an interaction — and nothing is written', async () => {
+    test('blocking closes open sessions AND prevents new interactions', async () => {
+        // Fresh ACTIVE interaction from the (not yet blocked) scanner:
+        const preScan = await request(app).get(`/api/v1/scan/${state.vehicle.tagId}`);
+        const fresh = await request(app)
+            .post(`/api/v1/scan/${state.vehicle.tagId}/interactions`)
+            .send({ scanToken: preScan.body.data.scanToken, phoneNumber: SCANNER_PHONE });
+        expect(fresh.status).toBe(201);
+        const freshId = fresh.body.data.interaction.interactionId;
+
         const block = await request(app)
             .post('/api/v1/users/me/blocked')
             .set('Authorization', `Bearer ${state.ownerToken}`)
             .send({ phoneNumber: SCANNER_PHONE, name: 'Rude Person' });
         expect(block.status).toBe(200);
 
+        // The open session was force-closed with system-set 'blocked' status.
+        const closed = await InteractionModel.findOne({ interactionId: freshId }).lean();
+        expect(closed.status).toBe('blocked');
+
+        // And no new interaction can be created by that phone.
         const scan = await request(app).get(`/api/v1/scan/${state.vehicle.tagId}`);
         const before = await InteractionModel.countDocuments({});
         const attempt = await request(app)
