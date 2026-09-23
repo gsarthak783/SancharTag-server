@@ -9,12 +9,10 @@ router.use((req, res, next) => {
 });
 
 router.use('/auth', require('./authRoutes'));
-
-// Domain routers are mounted here as phases land:
-// router.use('/users', require('./userRoutes'));
-// router.use('/vehicles', require('./vehicleRoutes'));
-// router.use('/scan', require('./scanRoutes'));
-// router.use('/interactions', require('./interactionRoutes'));
-// router.use('/reports', require('./reportRoutes'));
+router.use('/users', require('./userRoutes'));
+router.use('/vehicles', require('./vehicleRoutes'));
+router.use('/scan', require('./scanRoutes'));
+router.use('/interactions', require('./interactionRoutes'));
+router.use('/reports', require('./reportRoutes'));
 
 module.exports = router;
