@@ -28,11 +28,18 @@ exports.findOrCreateByPhone = async (phoneNumber) => {
                 jwtSalt: generateJwtSalt(),
             },
         },
-        { upsert: true, new: true, lean: true, includeResultMetadata: true },
+        {
+            upsert: true,
+            new: true,
+            lean: true,
+            includeResultMetadata: true,
+            projection: '+jwtSalt', // select:false — opt in; verify-otp needs it to sign the session
+        },
     );
     const user = result.value;
     const isNewUser = !result.lastErrorObject?.updatedExisting;
-    delete user.jwtSalt; // findOneAndUpdate bypasses select:false defaults on upsert paths
+    // NOTE: user includes jwtSalt here (needed for session token issuance in
+    // verify-otp). The controller strips it before responding.
     return { user, isNewUser };
 };
 

@@ -8,8 +8,9 @@ router.use((req, res, next) => {
     next();
 });
 
+router.use('/auth', require('./authRoutes'));
+
 // Domain routers are mounted here as phases land:
-// router.use('/auth', require('./authRoutes'));
 // router.use('/users', require('./userRoutes'));
 // router.use('/vehicles', require('./vehicleRoutes'));
 // router.use('/scan', require('./scanRoutes'));
