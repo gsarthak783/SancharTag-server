@@ -1,18 +1,13 @@
+const logger = require('../utils/logger');
+
 /**
- * Send push notifications using Expo's Push API directly via fetch.
- * This approach does NOT require Firebase Admin or FCM credentials.
- * 
- * @param {string} expoPushToken - The recipient's Expo push token (e.g., ExponentPushToken[...])
- * @param {string} title - Notification title
- * @param {string} body - Notification body text
- * @param {object} data - Optional data payload (e.g., interactionId)
+ * Send a push notification via Expo's Push API.
+ * Fire-and-forget friendly: never throws, returns { success, ... }.
+ * (Receipt checking / batching via expo-server-sdk is a planned upgrade.)
  */
 const sendPushNotification = async (expoPushToken, title, body, data = {}) => {
-    console.log(`Sending notification to token: ${expoPushToken}`);
-
-    // Validate the token format
     if (!expoPushToken || !expoPushToken.startsWith('ExponentPushToken[')) {
-        console.error(`Invalid Expo push token: ${expoPushToken}`);
+        logger.warn('push skipped: invalid Expo token format');
         return { success: false, error: 'Invalid token format' };
     }
 
@@ -27,21 +22,23 @@ const sendPushNotification = async (expoPushToken, title, body, data = {}) => {
     };
 
     try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10_000);
         const response = await fetch('https://exp.host/--/api/v2/push/send', {
             method: 'POST',
             headers: {
-                'Accept': 'application/json',
-                'Accept-Encoding': 'gzip, deflate',
+                Accept: 'application/json',
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify(message),
+            signal: controller.signal,
         });
-
+        clearTimeout(timeout);
         const result = await response.json();
-        console.log('Notification Result:', JSON.stringify(result, null, 2));
+        logger.debug('push sent', { status: response.status });
         return { success: true, result };
     } catch (error) {
-        console.error('Error sending notification:', error);
+        logger.error('push send failed', { error: error.message });
         return { success: false, error: error.message };
     }
 };
