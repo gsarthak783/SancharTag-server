@@ -14,5 +14,6 @@ router.use('/vehicles', require('./vehicleRoutes'));
 router.use('/scan', require('./scanRoutes'));
 router.use('/interactions', require('./interactionRoutes'));
 router.use('/reports', require('./reportRoutes'));
+router.use('/admin', require('./adminRoutes'));
 
 module.exports = router;

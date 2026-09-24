@@ -6,4 +6,5 @@ process.env.MONGODB_URI = 'mongodb://placeholder-not-used-in-tests';
 process.env.JWT_SECRET = 'test-secret-key';
 process.env.SMS_ENABLED = 'false';
 process.env.MASTER_OTP = '999999';
+process.env.ADMIN_INTERNAL_KEY = 'test-admin-internal-key';
 process.env.LOG_LEVEL = 'error';

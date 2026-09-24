@@ -44,6 +44,10 @@ module.exports = {
     // Default phone region for numbers sent without a country code.
     defaultPhoneRegion: process.env.DEFAULT_PHONE_REGION || 'IN',
 
+    // Server-to-server key for the SancharTag Console's internal admin API.
+    // Unset = the /admin surface is disabled entirely.
+    adminInternalKey: process.env.ADMIN_INTERNAL_KEY || null,
+
     corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:3000,http://localhost:5173')
         .split(',')
         .map((origin) => origin.trim())

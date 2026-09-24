@@ -39,6 +39,10 @@ const codes = {
     REPORT_NOT_FOUND: { en: 'Report not found', statusCode: 404 },
     ALREADY_REPORTED: { en: 'This interaction has already been reported', statusCode: 409 },
 
+    // Admin (internal surface for the console)
+    ADMIN_DISABLED: { en: 'Admin API is not enabled on this server', statusCode: 503 },
+    ADMIN_UNAUTHORIZED: { en: 'Invalid admin credentials', statusCode: 401 },
+
     // Generic
     VALIDATION_FAILED: { en: 'Validation failed', statusCode: 422 },
     RATE_LIMITED: { en: 'Too many requests. Please try again later', statusCode: 429 },

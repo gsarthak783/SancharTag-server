@@ -97,3 +97,35 @@ exports.unblock = (userId, phoneNumber) => Model.updateOne(
 exports.remove = (userId) => Model.findOneAndDelete({ userId })
     .select('+blockedNumbers +pushToken')
     .lean();
+
+// --- Console (internal admin API) ---
+
+const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+exports.searchUsers = async ({ search = '', page = 1, limit = 20 } = {}) => {
+    const query = search
+        ? {
+            $or: [
+                { phoneNumber: { $regex: escapeRegex(search), $options: 'i' } },
+                { name: { $regex: escapeRegex(search), $options: 'i' } },
+                { userId: search },
+            ],
+        }
+        : {};
+    const skip = (Math.max(+page, 1) - 1) * +limit;
+    const projection = { userId: 1, phoneNumber: 1, name: 1, email: 1, status: 1, createdAt: 1 };
+    const [items, totalCount] = await Promise.all([
+        Model.find(query, projection).sort({ createdAt: -1 }).skip(skip).limit(+limit).lean(),
+        Model.countDocuments(query),
+    ]);
+    return { items, totalCount, page: +page, totalPages: Math.ceil(totalCount / +limit) || 1 };
+};
+
+exports.setStatus = (userId, status) => Model.findOneAndUpdate(
+    { userId },
+    { $set: { status } },
+    { new: true, lean: true, runValidators: true },
+);
+
+exports.countAll = () => Model.countDocuments({});
+exports.countSince = (date) => Model.countDocuments({ createdAt: { $gte: date } });

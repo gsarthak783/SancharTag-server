@@ -2,6 +2,7 @@ const userService = require('../dbServices/userService');
 const vehicleService = require('../dbServices/vehicleService');
 const interactionService = require('../dbServices/interactionService');
 const archiveService = require('../dbServices/archiveService');
+const accountService = require('../services/accountService');
 const messageService = require('../services/messageService');
 const errorCodes = require('../config/errorCodes');
 const logger = require('../utils/logger');
@@ -46,16 +47,7 @@ exports.updateMe = async (req, res) => {
 // Full account deletion: archive-then-delete cascade, server-side, one call.
 exports.deleteMe = async (req, res) => {
     try {
-        const { userId } = req.user;
-        const userDoc = await userService.remove(userId);
-        if (!userDoc) throw errorCodes.USER_NOT_FOUND;
-
-        await archiveService.archiveUser(userDoc, userId);
-        const vehicles = await vehicleService.removeAllByUser(userId);
-        await archiveService.archiveVehicles(vehicles, userId);
-        const interactions = await interactionService.removeAllByUser(userId);
-        await archiveService.archiveInteractions(interactions, userId);
-
+        await accountService.deleteUserCascade(req.user.userId, req.user.userId);
         handleResponse({ res, message: 'Account deleted', data: { deleted: true } });
     } catch (error) {
         handleError({ res, error });

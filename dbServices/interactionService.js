@@ -100,6 +100,20 @@ exports.markRead = (interactionId) => Model.findOneAndUpdate(
     },
 );
 
+// --- Console (internal admin API) ---
+
+exports.countsForUser = async (userId) => {
+    const [total, active] = await Promise.all([
+        Model.countDocuments({ userId }),
+        Model.countDocuments({ userId, status: INTERACTION_STATUS.ACTIVE }),
+    ]);
+    return { total, active };
+};
+
+exports.countAll = () => Model.countDocuments({});
+exports.countByStatus = (status) => Model.countDocuments({ status });
+exports.countSince = (date) => Model.countDocuments({ createdAt: { $gte: date } });
+
 // Open sessions with a given scanner phone — used when the owner blocks them.
 exports.findActiveByScannerPhone = (userId, phoneNumber) => Model.find(
     { userId, 'scanner.phoneNumber': phoneNumber, status: INTERACTION_STATUS.ACTIVE },
