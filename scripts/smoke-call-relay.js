@@ -57,8 +57,9 @@ const check = (label, ok) => {
         const { user, token: ownerToken } = await post('/auth/verify-otp', { phoneNumber: '9876500011', otp: '999999' });
         const vehicle = await post('/vehicles', { vehicleName: 'Smoke Car', vehicleNumber: 'MH01XX0001' }, ownerToken);
         const scan = await get(`/scan/${vehicle.tagId}`);
+        const { scannerToken } = await post('/auth/verify-scanner-otp', { phoneNumber: '9876500012', otp: '999999' });
         const created = await post(`/scan/${vehicle.tagId}/interactions`, {
-            scanToken: scan.scanToken, phoneNumber: '9876500012',
+            scanToken: scan.scanToken, scannerToken,
         });
         const { interactionToken } = created;
         const interactionId = created.interaction.interactionId;

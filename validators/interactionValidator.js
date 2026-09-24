@@ -1,6 +1,5 @@
 const { body } = require('express-validator');
 const errorCodes = require('../config/errorCodes');
-const { normalizePhone } = require('../utils/phone');
 const { MESSAGE_MAX_LENGTH, OWNER_SETTABLE_STATUSES } = require('../constants/interaction');
 
 exports.sendMessage = [
@@ -15,15 +14,18 @@ exports.updateStatus = [
     body('status').isIn(OWNER_SETTABLE_STATUSES).withMessage(errorCodes.INVALID_STATUS),
 ];
 
-// Scanner's interaction-create payload. Everything optional except the scan token
-// (checked by authenticateScanToken); phone, if provided, must normalize.
+// Scanner's interaction-create payload. Requires both tokens (checked by their
+// middlewares). The phone comes from the scanner token — never from the body.
 exports.createFromScan = [
-    body('scanToken').isString().notEmpty().withMessage(errorCodes.INVALID_SCAN_TOKEN),
+    // withMessage binds to the PRECEDING check only — set it on both.
+    body('scanToken')
+        .isString().withMessage(errorCodes.INVALID_SCAN_TOKEN)
+        .notEmpty().withMessage(errorCodes.INVALID_SCAN_TOKEN),
+    body('scannerToken')
+        .isString().withMessage(errorCodes.INVALID_SCANNER_TOKEN)
+        .notEmpty().withMessage(errorCodes.INVALID_SCANNER_TOKEN),
     body('type').optional().isString().trim().isLength({ max: 100 }),
     body('name').optional().isString().trim().isLength({ max: 100 }),
-    body('phoneNumber').optional()
-        .customSanitizer((value) => normalizePhone(value))
-        .notEmpty().withMessage(errorCodes.PHONE_REQUIRED),
     body('location').optional().isObject(),
     body('location.latitude').optional().isFloat({ min: -90, max: 90 }),
     body('location.longitude').optional().isFloat({ min: -180, max: 180 }),

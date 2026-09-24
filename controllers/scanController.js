@@ -14,7 +14,8 @@ exports.createInteraction = async (req, res) => {
     try {
         const data = await scanService.createInteraction({
             tagId: req.params.tagId,
-            scanTokenInfo: req.scanTokenInfo, // set by authenticateScanToken
+            scanTokenInfo: req.scanTokenInfo,   // set by authenticateScanToken
+            scannerPhone: req.scannerPhone,     // set by authenticateScannerToken (OTP-verified)
             body: req.body,
             ip: req.ip,
             userAgent: req.headers['user-agent'],

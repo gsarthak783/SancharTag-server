@@ -25,6 +25,8 @@ module.exports = {
         // Absolute cap: no session survives past this, regardless of activity.
         absoluteSessionDays: Number(process.env.ABSOLUTE_SESSION_DAYS) || 180,
         scanTokenTtlMinutes: Number(process.env.SCAN_TOKEN_TTL_MINUTES) || 15,
+        // A verified scanner stays verified this long — no re-OTP on rescans.
+        scannerTokenTtlDays: Number(process.env.SCANNER_TOKEN_TTL_DAYS) || 7,
         interactionTokenTtlHours: Number(process.env.INTERACTION_TOKEN_TTL_HOURS) || 24,
     },
 

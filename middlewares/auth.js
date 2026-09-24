@@ -102,6 +102,29 @@ exports.authenticateScanToken = async (req, res, next) => {
     }
 };
 
+// Scanner accountability: interaction creation also requires a scanner token
+// (OTP-verified phone). The phone used for storage and block checks comes from
+// THIS token — a body phoneNumber is never trusted.
+exports.authenticateScannerToken = async (req, res, next) => {
+    try {
+        const token = req.body?.scannerToken;
+        if (!token) throw errorCodes.INVALID_SCANNER_TOKEN;
+        let info;
+        try {
+            info = verifyToken(token);
+        } catch (err) {
+            throw errorCodes.INVALID_SCANNER_TOKEN;
+        }
+        if (info.purpose !== TOKEN_PURPOSE.SCANNER || !info.phoneNumber) {
+            throw errorCodes.INVALID_SCANNER_TOKEN;
+        }
+        req.scannerPhone = info.phoneNumber; // E.164, verified via OTP
+        next();
+    } catch (error) {
+        handleError({ res, error });
+    }
+};
+
 const OWNERSHIP_CONFIG = {
     vehicle: {
         param: 'vehicleId',

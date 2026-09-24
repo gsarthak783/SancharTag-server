@@ -55,12 +55,14 @@ const notifyOwnerOfScan = async (owner, vehicle, interactionId) => {
 };
 
 /**
- * Scan token → interaction. Order matters:
- *  1. consume the single-use jti (double-spend = 401, nothing written)
+ * Scan token + scanner token → interaction. Order matters:
+ *  1. consume the single-use scan jti (double-spend = 401, nothing written)
  *  2. block check BEFORE create (blocked scanners leave no rows behind)
  *  3. create with server-generated id and minimal capture context
+ * scannerPhone comes from the OTP-verified scanner token (middleware), which
+ * is what makes owner-side blocking genuinely enforceable.
  */
-exports.createInteraction = async ({ tagId, scanTokenInfo, body, ip, userAgent }) => {
+exports.createInteraction = async ({ tagId, scanTokenInfo, scannerPhone, body, ip, userAgent }) => {
     const firstUse = await consumedTokenService.consume(scanTokenInfo.jti, scanTokenInfo.exp);
     if (!firstUse) throw errorCodes.SCAN_TOKEN_USED;
 
@@ -69,8 +71,7 @@ exports.createInteraction = async ({ tagId, scanTokenInfo, body, ip, userAgent }
     const owner = await userService.getByUserId(vehicle.userId);
     if (!owner || owner.status === 'suspended') throw errorCodes.TAG_NOT_FOUND;
 
-    const scannerPhone = body.phoneNumber || null; // validator already normalized to E.164
-    if (scannerPhone && await userService.isBlocked(vehicle.userId, scannerPhone)) {
+    if (await userService.isBlocked(vehicle.userId, scannerPhone)) {
         throw errorCodes.BLOCKED_BY_OWNER;
     }
 
@@ -81,6 +82,7 @@ exports.createInteraction = async ({ tagId, scanTokenInfo, body, ip, userAgent }
         contactType: CONTACT_TYPE.SCAN,
         scanner: {
             phoneNumber: scannerPhone,
+            phoneVerified: true,
             name: body.name || undefined,
             ip,
             userAgent: userAgent ? String(userAgent).slice(0, 300) : undefined,

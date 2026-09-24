@@ -29,7 +29,8 @@ const interactionSchema = new mongoose.Schema({
     // Scanner identity + minimal capture context. Deliberately no device
     // fingerprinting (screen/timezone/ISP) — DPDP data-minimization.
     scanner: {
-        phoneNumber: { type: String }, // E.164, if the scanner shared it
+        phoneNumber: { type: String }, // E.164, OTP-verified at interaction create
+        phoneVerified: { type: Boolean, default: false },
         name: { type: String, maxlength: 100 },
         ip: { type: String },
         userAgent: { type: String, maxlength: 300 },

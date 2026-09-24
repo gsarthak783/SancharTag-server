@@ -11,6 +11,7 @@ const codes = {
     INVALID_TOKEN: { en: 'Invalid or expired session. Please log in again', statusCode: 401 },
     SESSION_EXPIRED: { en: 'Your session has expired. Please log in again', statusCode: 401 },
     INVALID_SCAN_TOKEN: { en: 'This scan link is invalid or has expired. Please scan the QR code again', statusCode: 401 },
+    INVALID_SCANNER_TOKEN: { en: 'Phone verification expired. Please verify your number again', statusCode: 401 },
     SCAN_TOKEN_USED: { en: 'This scan session was already used. Please scan the QR code again', statusCode: 401 },
     INVALID_INTERACTION_TOKEN: { en: 'This chat session is invalid or has expired', statusCode: 401 },
 

@@ -116,19 +116,44 @@ describe('SancharTag API — end to end', () => {
         expect(res.body.code).toBe('TAG_NOT_FOUND');
     });
 
-    test('scan token creates ONE interaction (single-use jti)', async () => {
+    test('scanner phone verification issues a scanner token (no user created)', async () => {
+        const res = await request(app)
+            .post('/api/v1/auth/verify-scanner-otp')
+            .send({ phoneNumber: SCANNER_PHONE, otp: config.otp.masterOtp });
+        expect(res.status).toBe(200);
+        expect(res.body.data.scannerToken).toBeDefined();
+        state.scannerToken = res.body.data.scannerToken;
+
+        // No owner account materialized for the scanner's phone.
+        const UserModel = require('../models/userModel');
+        expect(await UserModel.countDocuments({ phoneNumber: SCANNER_PHONE })).toBe(0);
+    });
+
+    test('interaction create requires BOTH tokens; scan token is single-use', async () => {
+        // Without a scanner token → rejected before anything is written.
+        const noVerify = await request(app)
+            .post(`/api/v1/scan/${state.vehicle.tagId}/interactions`)
+            .send({ scanToken: state.scanToken, type: 'Wrong Parking' });
+        expect(noVerify.status).toBe(401);
+        expect(noVerify.body.code).toBe('INVALID_SCANNER_TOKEN');
+
         const first = await request(app)
             .post(`/api/v1/scan/${state.vehicle.tagId}/interactions`)
-            .send({ scanToken: state.scanToken, phoneNumber: SCANNER_PHONE, type: 'Wrong Parking' });
+            .send({ scanToken: state.scanToken, scannerToken: state.scannerToken, type: 'Wrong Parking' });
         expect(first.status).toBe(201);
         expect(first.body.data.interactionToken).toBeDefined();
         expect(first.body.data.interaction.interactionId).toMatch(/^int_/);
         state.interactionId = first.body.data.interaction.interactionId;
         state.interactionToken = first.body.data.interactionToken;
 
+        // Stored phone is the VERIFIED one from the token.
+        const doc = await InteractionModel.findOne({ interactionId: state.interactionId }).lean();
+        expect(doc.scanner.phoneNumber).toBe(SCANNER_PHONE);
+        expect(doc.scanner.phoneVerified).toBe(true);
+
         const replay = await request(app)
             .post(`/api/v1/scan/${state.vehicle.tagId}/interactions`)
-            .send({ scanToken: state.scanToken, phoneNumber: SCANNER_PHONE });
+            .send({ scanToken: state.scanToken, scannerToken: state.scannerToken });
         expect(replay.status).toBe(401);
         expect(replay.body.code).toBe('SCAN_TOKEN_USED');
     });
@@ -188,7 +213,7 @@ describe('SancharTag API — end to end', () => {
         const preScan = await request(app).get(`/api/v1/scan/${state.vehicle.tagId}`);
         const fresh = await request(app)
             .post(`/api/v1/scan/${state.vehicle.tagId}/interactions`)
-            .send({ scanToken: preScan.body.data.scanToken, phoneNumber: SCANNER_PHONE });
+            .send({ scanToken: preScan.body.data.scanToken, scannerToken: state.scannerToken });
         expect(fresh.status).toBe(201);
         const freshId = fresh.body.data.interaction.interactionId;
 
@@ -207,7 +232,7 @@ describe('SancharTag API — end to end', () => {
         const before = await InteractionModel.countDocuments({});
         const attempt = await request(app)
             .post(`/api/v1/scan/${state.vehicle.tagId}/interactions`)
-            .send({ scanToken: scan.body.data.scanToken, phoneNumber: SCANNER_PHONE });
+            .send({ scanToken: scan.body.data.scanToken, scannerToken: state.scannerToken });
         expect(attempt.status).toBe(403);
         expect(attempt.body.code).toBe('BLOCKED_BY_OWNER');
         expect(await InteractionModel.countDocuments({})).toBe(before); // no row created

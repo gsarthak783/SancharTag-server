@@ -56,6 +56,14 @@ const generateScanToken = (tagId) => sign(
     `${config.security.scanTokenTtlMinutes}m`,
 );
 
+// Scanner phone verification: issued after OTP verify, reusable for days so a
+// returning scanner isn't re-prompted. The phone claim is the VERIFIED
+// number — interaction creation trusts this token, never a body field.
+const generateScannerToken = (phoneNumber) => sign(
+    { purpose: TOKEN_PURPOSE.SCANNER, phoneNumber },
+    `${config.security.scannerTokenTtlDays}d`,
+);
+
 // Scanner step 2: authorizes messaging + socket join for exactly ONE interaction.
 const generateInteractionToken = ({ interactionId, phoneNumber }) => sign(
     {
@@ -71,5 +79,6 @@ module.exports = {
     generateSessionToken,
     refreshIfDue,
     generateScanToken,
+    generateScannerToken,
     generateInteractionToken,
 };

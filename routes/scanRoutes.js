@@ -2,7 +2,7 @@ const express = require('express');
 const Validator = require('../validators/interactionValidator');
 const postValidator = require('../middlewares/postValidator');
 const { publicRateLimiter } = require('../middlewares/rateLimiter/publicApi');
-const { authenticateScanToken } = require('../middlewares/auth');
+const { authenticateScanToken, authenticateScannerToken } = require('../middlewares/auth');
 const Controller = require('../controllers/scanController');
 
 const router = express.Router();
@@ -16,6 +16,7 @@ router.post(
     Validator.createFromScan,
     postValidator,
     authenticateScanToken,
+    authenticateScannerToken, // OTP-verified phone — scanner accountability
     Controller.createInteraction,
 );
 
