@@ -140,6 +140,19 @@ const waitFor = (socket, event, timeoutMs = 4000) => new Promise((resolve, rejec
         const create2 = await req('POST', `/scan/${vehicle.tagId}/interactions`,
             { scanToken: scan2.body.data.scanToken, scannerToken, type: 'Lights On' });
         check('Reuse: verified scanner skips OTP on rescan', create2.status === 201);
+
+        // ---------- CROSS-TAG REUSE: a DIFFERENT owner's QR, same verified identity ----------
+        // Verification is bound to the phone, not the tag — scanning any other
+        // vehicle within the 7 days must not re-prompt for OTP.
+        const owner2 = await req('POST', '/auth/verify-otp', { phoneNumber: '9876511003', otp: '999999' });
+        const vehicleB = (await req('POST', '/vehicles', { vehicleName: 'Other Car', vehicleNumber: 'MH02ZZ1111' }, owner2.body.data.token)).body.data;
+        const scanB = await req('GET', `/scan/${vehicleB.tagId}`);
+        const createB = await req('POST', `/scan/${vehicleB.tagId}/interactions`,
+            { scanToken: scanB.body.data.scanToken, scannerToken, type: 'Accident' });
+        check('Cross-tag: same scanner token works on a different vehicle/owner', createB.status === 201);
+        const crossView = await req('GET', `/interactions/${createB.body.data.interaction.interactionId}`, null, owner2.body.data.token);
+        check('Cross-tag: second owner still sees the verified phone',
+            crossView.body.data.scanner.phoneNumber === '+919876511002' && crossView.body.data.scanner.phoneVerified === true);
         const interaction2 = create2.body.data.interaction.interactionId;
         const interactionToken2 = create2.body.data.interactionToken;
 
