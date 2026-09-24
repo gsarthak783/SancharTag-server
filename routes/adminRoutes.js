@@ -27,5 +27,11 @@ router.get('/reports/:reportId', Controller.getReport);
 router.patch('/reports/:reportId/status', Controller.setReportStatus);
 
 router.get('/interactions/:interactionId', Controller.getInteractionMeta);
+// Privacy unlock: console enforces superadmin + step-up + reason; we enforce
+// the reason again and log the access loudly.
+router.get('/interactions/:interactionId/messages', Controller.unlockInteractionMessages);
+
+router.get('/support/otp-status', Controller.otpStatus);
+router.post('/support/clear-rate-limit', Controller.clearRateLimit);
 
 module.exports = router;

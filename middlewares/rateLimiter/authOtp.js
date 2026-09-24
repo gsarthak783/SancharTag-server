@@ -23,6 +23,30 @@ const phoneMiddleware = limiterMiddleware(phoneLimiter, (req) => req.body.phoneN
 
 exports.authOtpLimiter = [ipMiddleware, phoneMiddleware];
 
+// --- Console support tools ---
+
+// "My OTP isn't working" is the #1 support call: this clears the per-phone
+// counters (the per-IP limiter is left alone — it protects against a different
+// attacker and can't be safely cleared by phone).
+exports.clearOtpLimits = async (phoneNumber) => {
+    await Promise.all([
+        phoneLimiter.delete(phoneNumber),
+        cooldownLimiter.delete(phoneNumber),
+    ]);
+};
+
+exports.getOtpLimitStatus = async (phoneNumber) => {
+    const [phone, cooldown] = await Promise.all([
+        phoneLimiter.get(phoneNumber),
+        cooldownLimiter.get(phoneNumber),
+    ]);
+    return {
+        phoneAttemptsUsed: phone?.consumedPoints ?? 0,
+        phoneBlockedForSeconds: phone && phone.consumedPoints >= 6 ? Math.ceil(phone.msBeforeNext / 1000) : 0,
+        resendCooldownSeconds: cooldown && cooldown.consumedPoints >= 1 ? Math.ceil(cooldown.msBeforeNext / 1000) : 0,
+    };
+};
+
 exports.otpResendCooldown = async (req, res, next) => {
     try {
         await cooldownLimiter.consume(req.body.phoneNumber);

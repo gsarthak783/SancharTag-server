@@ -25,6 +25,19 @@ exports.issue = async (phoneNumber) => {
     return otp;
 };
 
+// Console support view: the state of a phone's OTP, never the code itself.
+exports.status = async (phoneNumber) => {
+    const doc = await Model.findOne({ phoneNumber }, { attempts: 1, expiresAt: 1, updatedAt: 1 }).lean();
+    if (!doc) return { hasActiveOtp: false };
+    return {
+        hasActiveOtp: doc.expiresAt > new Date(),
+        attempts: doc.attempts,
+        maxAttempts: config.otp.maxAttempts,
+        expiresAt: doc.expiresAt,
+        issuedAt: doc.updatedAt,
+    };
+};
+
 /**
  * Verify-and-consume in one atomic statement: the filter IS the check
  * (phone + hash + unexpired + attempts under cap), the delete IS the

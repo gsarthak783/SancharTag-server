@@ -119,6 +119,32 @@ describe('internal admin API (console surface)', () => {
         expect(typeof res.body.data.messageCount).toBe('number');
     });
 
+    test('support tools: otp status (no code leaked) + clear rate limit', async () => {
+        await request(app).post('/api/v1/auth/send-otp').send({ phoneNumber: '9876522003' });
+
+        const status = await admin('get', '/support/otp-status?phoneNumber=9876522003');
+        expect(status.status).toBe(200);
+        expect(status.body.data.otp.hasActiveOtp).toBe(true);
+        expect(status.body.data.otp.attempts).toBe(0);
+        expect(status.body.data.limits.phoneAttemptsUsed).toBeGreaterThanOrEqual(1);
+        expect(JSON.stringify(status.body)).not.toContain('otpHash');
+
+        const clear = await admin('post', '/support/clear-rate-limit').send({ phoneNumber: '9876522003' });
+        expect(clear.status).toBe(200);
+        const after = await admin('get', '/support/otp-status?phoneNumber=9876522003');
+        expect(after.body.data.limits.phoneAttemptsUsed).toBe(0);
+    });
+
+    test('privacy unlock demands a reason, then returns the transcript', async () => {
+        const noReason = await admin('get', `/interactions/${state.interactionId}/messages`);
+        expect(noReason.status).toBe(422);
+
+        const unlocked = await admin('get', `/interactions/${state.interactionId}/messages?reason=${encodeURIComponent('support ticket TKT-1 dispute verification')}`);
+        expect(unlocked.status).toBe(200);
+        expect(Array.isArray(unlocked.body.data.messages)).toBe(true);
+        expect(unlocked.body.data.scanner.phoneNumber).toBe('+919876522002');
+    });
+
     test('admin delete cascades like self-delete', async () => {
         const res = await admin('delete', `/users/${state.userId}`);
         expect(res.status).toBe(200);

@@ -2,9 +2,13 @@ const userService = require('../dbServices/userService');
 const vehicleService = require('../dbServices/vehicleService');
 const interactionService = require('../dbServices/interactionService');
 const reportService = require('../dbServices/reportService');
+const otpService = require('../dbServices/otpService');
 const accountService = require('../services/accountService');
 const errorCodes = require('../config/errorCodes');
+const logger = require('../utils/logger');
 const { handleResponse, handleError } = require('../utils/requestHandlers');
+const { normalizePhone } = require('../utils/phone');
+const { clearOtpLimits, getOtpLimitStatus } = require('../middlewares/rateLimiter/authOtp');
 const { INTERACTION_STATUS } = require('../constants/interaction');
 
 // Internal admin surface — called ONLY by the SancharTag Console's server
@@ -179,6 +183,68 @@ exports.getInteractionMeta = async (req, res) => {
         if (!interaction) throw errorCodes.INTERACTION_NOT_FOUND;
         const { messages, ...meta } = interaction;
         handleResponse({ res, data: { ...meta, messageCount: (messages || []).length } });
+    } catch (error) {
+        handleError({ res, error });
+    }
+};
+
+/**
+ * PRIVACY UNLOCK — the one sanctioned window into a non-reported chat.
+ * The console gates this behind superadmin + step-up + a mandatory reason;
+ * this side refuses without a reason and writes a loud log line so the
+ * access is traceable on BOTH systems.
+ */
+exports.unlockInteractionMessages = async (req, res) => {
+    try {
+        const reason = String(req.query.reason || '').trim();
+        if (reason.length < 10) throw errorCodes.VALIDATION_FAILED;
+
+        const interaction = await interactionService.getByInteractionId(req.params.interactionId);
+        if (!interaction) throw errorCodes.INTERACTION_NOT_FOUND;
+
+        logger.warn('PRIVACY UNLOCK: interaction messages accessed', {
+            interactionId: interaction.interactionId,
+            actingAdmin: req.actingAdmin,
+            reason,
+        });
+
+        handleResponse({
+            res,
+            data: {
+                interactionId: interaction.interactionId,
+                status: interaction.status,
+                scanner: interaction.scanner,
+                messages: interaction.messages || [],
+            },
+        });
+    } catch (error) {
+        handleError({ res, error });
+    }
+};
+
+// --- Support tools ---
+
+exports.otpStatus = async (req, res) => {
+    try {
+        const phoneNumber = normalizePhone(String(req.query.phoneNumber || ''));
+        if (!phoneNumber) throw errorCodes.PHONE_REQUIRED;
+        const [otp, limits] = await Promise.all([
+            otpService.status(phoneNumber),
+            getOtpLimitStatus(phoneNumber),
+        ]);
+        handleResponse({ res, data: { phoneNumber, otp, limits } });
+    } catch (error) {
+        handleError({ res, error });
+    }
+};
+
+exports.clearRateLimit = async (req, res) => {
+    try {
+        const phoneNumber = normalizePhone(String(req.body.phoneNumber || ''));
+        if (!phoneNumber) throw errorCodes.PHONE_REQUIRED;
+        await clearOtpLimits(phoneNumber);
+        logger.info('support: OTP rate limits cleared', { phoneNumber, actingAdmin: req.actingAdmin });
+        handleResponse({ res, message: 'Rate limits cleared', data: { phoneNumber } });
     } catch (error) {
         handleError({ res, error });
     }
