@@ -6,9 +6,11 @@ const { makeLimiter, limiterMiddleware } = require('./common');
 
 // Dual-layer protection on OTP endpoints (runs after phone normalization):
 //  - per IP:    10 requests / 5 min  (blanket abuse)
-//  - per phone:  3 requests / 5 min  (targeting one number / SMS bombing)
+//  - per phone:  6 requests / 5 min  (send + a few verify attempts fit; SMS
+//    cost is separately capped by the resend cooldown, and brute force by the
+//    per-OTP attempt limit)
 const ipLimiter = makeLimiter({ keyPrefix: 'rl_otp_ip', points: 10, duration: 300, blockDuration: 300 });
-const phoneLimiter = makeLimiter({ keyPrefix: 'rl_otp_phone', points: 3, duration: 300, blockDuration: 300 });
+const phoneLimiter = makeLimiter({ keyPrefix: 'rl_otp_phone', points: 6, duration: 300, blockDuration: 300 });
 // Resend cooldown: one send per phone per cooldown window (send-otp only).
 const cooldownLimiter = makeLimiter({
     keyPrefix: 'rl_otp_cooldown',
