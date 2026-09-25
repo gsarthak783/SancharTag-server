@@ -1,221 +1,97 @@
-const asyncHandler = require('express-async-handler');
-const { User, Vehicle } = require('../db');
+const userService = require('../dbServices/userService');
+const vehicleService = require('../dbServices/vehicleService');
+const interactionService = require('../dbServices/interactionService');
+const archiveService = require('../dbServices/archiveService');
+const accountService = require('../services/accountService');
+const messageService = require('../services/messageService');
+const errorCodes = require('../config/errorCodes');
+const logger = require('../utils/logger');
+const { handleResponse, handleError } = require('../utils/requestHandlers');
+const { pick } = require('../utils/pick');
+const { INTERACTION_STATUS, SENDER_ROLE } = require('../constants/interaction');
 
-// @desc    Get users (supports query by phoneNumber and _embed=vehicles)
-// @route   GET /users
-// @access  Public
-const getUsers = asyncHandler(async (req, res) => {
-    const { phoneNumber, userId, _embed } = req.query;
-    let query = {};
+// Writable profile fields — the mass-assignment boundary. phoneNumber, status,
+// userId, jwtSalt are NOT here by design.
+const PROFILE_WRITABLE_FIELDS = [
+    'name', 'email', 'emergencyContact', 'bloodGroup',
+    'notificationPreferences', 'privacySettings', 'acceptedPolicy',
+];
 
-    if (phoneNumber) {
-        query.phoneNumber = phoneNumber;
+exports.me = async (req, res) => {
+    try {
+        handleResponse({ res, data: req.user });
+    } catch (error) {
+        handleError({ res, error });
     }
+};
 
-    if (userId) {
-        query.userId = userId;
-    }
+exports.updateMe = async (req, res) => {
+    try {
+        const updates = pick(req.body, PROFILE_WRITABLE_FIELDS);
+        if (updates.acceptedPolicy === true) updates.policyAcceptedAt = new Date();
 
-    let users = await User.find(query);
-
-    // Handle _embed=vehicles simulation
-    if (_embed === 'vehicles') {
-        // Convert mongoose docs to objects to attach vehicles
-        users = await Promise.all(users.map(async (user) => {
-            const vehicles = await Vehicle.find({ userId: user.userId });
-            return { ...user.toObject(), vehicles };
-        }));
-    }
-
-    res.json(users);
-});
-
-// @desc    Create a user
-// @route   POST /users
-// @access  Public
-const createUser = asyncHandler(async (req, res) => {
-    const { userId, phoneNumber, name, email, notificationPreferences, acceptedPolicy, policyAcceptedAt, emergencyContact, bloodGroup } = req.body;
-
-    if (!userId || !phoneNumber) {
-        res.status(400);
-        throw new Error('Please add all required fields');
-    }
-
-    // Check if user exists
-    const userExists = await User.findOne({ userId });
-
-    if (userExists) {
-        res.status(400);
-        throw new Error('User already exists');
-    }
-
-    // Create user
-    const user = await User.create({
-        userId,
-        phoneNumber,
-        name,
-        email,
-        notificationPreferences,
-        acceptedPolicy,
-        policyAcceptedAt,
-        emergencyContact,
-        bloodGroup
-    });
-
-    if (user) {
-        res.status(201).json(user);
-    } else {
-        res.status(400);
-        throw new Error('Invalid user data');
-    }
-});
-
-// @desc    Update user
-// @route   PATCH /users/:id
-// @access  Public
-const updateUser = asyncHandler(async (req, res) => {
-    // Note: The client sends the custom 'userId' (e.g., user_123) in the URL usually if using json-server convention, 
-    // but typically REST uses database _id. 
-    // api.ts uses `${API_URL}/users/${userId}`, where userId is the custom string.
-    // So we should search by custom `userId` field, NOT `_id`.
-
-    const userId = req.params.id; // This corresponds to the user.userId field in our schema
-
-    const user = await User.findOne({ userId: userId });
-
-    if (!user) {
-        // Try finding by _id if not found by custom userId, just in case
-        // const userById = await User.findById(req.params.id);
-        // if (!userById) { ... }
-        res.status(404);
-        throw new Error('User not found');
-    }
-
-    // If updating pushToken, ensure it's unique by removing it from other users
-    if (req.body.pushToken) {
-        await User.updateMany(
-            { pushToken: req.body.pushToken, userId: { $ne: userId } },
-            { $unset: { pushToken: 1 } }
-        );
-    }
-
-    const updatedUser = await User.findOneAndUpdate({ userId: userId }, req.body, {
-        new: true,
-    });
-
-    res.json(updatedUser);
-});
-
-// @desc    Delete user
-// @route   DELETE /users/:id
-// @access  Public
-const deleteUser = asyncHandler(async (req, res) => {
-    const userId = req.params.id;
-    const user = await User.findOne({ userId });
-
-    if (!user) {
-        res.status(404);
-        throw new Error('User not found');
-    }
-
-    await user.deleteOne();
-
-    res.json({ id: userId });
-});
-
-// @desc    Block a user (phone number)
-// @route   POST /users/:id/block
-// @access  Private
-const blockUser = asyncHandler(async (req, res) => {
-    const userId = req.params.id;
-    const { phoneNumber, name } = req.body;
-
-    if (!phoneNumber) {
-        res.status(400);
-        throw new Error('Phone number is required');
-    }
-
-    const user = await User.findOne({ userId });
-
-    if (!user) {
-        res.status(404);
-        throw new Error('User not found');
-    }
-
-    if (!user.blockedNumbers) {
-        user.blockedNumbers = [];
-    }
-
-    // Check if already blocked
-    const alreadyBlocked = user.blockedNumbers.some(entry => entry.phoneNumber === phoneNumber);
-
-    if (!alreadyBlocked) {
-        user.blockedNumbers.push({ phoneNumber, name: name || 'Unknown' });
-        await user.save();
-    } else {
-        // Optionally update name if it was missing or changed
-        if (name) {
-            const index = user.blockedNumbers.findIndex(entry => entry.phoneNumber === phoneNumber);
-            if (index !== -1) {
-                user.blockedNumbers[index].name = name;
-                await user.save();
-            }
+        // Push tokens dedupe across accounts — separate path.
+        if (req.body.pushToken) {
+            await userService.setPushToken(req.user.userId, req.body.pushToken);
         }
+
+        const data = Object.keys(updates).length
+            ? await userService.updateProfile(req.user.userId, updates)
+            : req.user;
+        handleResponse({ res, data });
+    } catch (error) {
+        handleError({ res, error });
     }
+};
 
-    res.json({ message: 'User blocked successfully', blockedNumbers: user.blockedNumbers });
-});
-
-// @desc    Unblock a user (phone number)
-// @route   POST /users/:id/unblock
-// @access  Private
-const unblockUser = asyncHandler(async (req, res) => {
-    const userId = req.params.id;
-    const { phoneNumber } = req.body;
-
-    if (!phoneNumber) {
-        res.status(400);
-        throw new Error('Phone number is required');
+// Full account deletion: archive-then-delete cascade, server-side, one call.
+exports.deleteMe = async (req, res) => {
+    try {
+        await accountService.deleteUserCascade(req.user.userId, req.user.userId);
+        handleResponse({ res, message: 'Account deleted', data: { deleted: true } });
+    } catch (error) {
+        handleError({ res, error });
     }
+};
 
-    const user = await User.findOne({ userId });
-
-    if (!user) {
-        res.status(404);
-        throw new Error('User not found');
+exports.getBlocked = async (req, res) => {
+    try {
+        const data = await userService.getBlockedNumbers(req.user.userId);
+        handleResponse({ res, data: data || [] });
+    } catch (error) {
+        handleError({ res, error });
     }
+};
 
-    if (user.blockedNumbers) {
-        // Filter out the object with matching phoneNumber
-        user.blockedNumbers = user.blockedNumbers.filter(entry => entry.phoneNumber !== phoneNumber);
-        await user.save();
+exports.block = async ({ user, body: { phoneNumber, name } }, res) => {
+    try {
+        if (phoneNumber === user.phoneNumber) throw errorCodes.VALIDATION_FAILED;
+        await userService.block(user.userId, { phoneNumber, name });
+
+        // Blocking also closes any open sessions with that scanner ('blocked'
+        // is system-set — not reachable via PATCH /status by design).
+        const open = await interactionService.findActiveByScannerPhone(user.userId, phoneNumber);
+        for (const { interactionId } of open) {
+            await messageService.updateStatusAndNotify({
+                interactionId,
+                status: INTERACTION_STATUS.BLOCKED,
+                endedBy: SENDER_ROLE.OWNER,
+            }).catch((err) => logger.error('block: session close failed', { interactionId, error: err.message }));
+        }
+
+        const data = await userService.getBlockedNumbers(user.userId);
+        handleResponse({ res, message: 'Number blocked', data });
+    } catch (error) {
+        handleError({ res, error });
     }
+};
 
-    res.json({ message: 'User unblocked successfully', blockedNumbers: user.blockedNumbers });
-});
-
-// @desc    Get blocked users
-// @route   GET /users/:id/blocked
-// @access  Private
-const getBlockedUsers = asyncHandler(async (req, res) => {
-    const userId = req.params.id;
-
-    const user = await User.findOne({ userId });
-
-    if (!user) {
-        res.status(404);
-        throw new Error('User not found');
+exports.unblock = async ({ user, params: { phoneNumber } }, res) => {
+    try {
+        await userService.unblock(user.userId, phoneNumber);
+        const data = await userService.getBlockedNumbers(user.userId);
+        handleResponse({ res, message: 'Number unblocked', data });
+    } catch (error) {
+        handleError({ res, error });
     }
-
-    res.json(user.blockedNumbers || []);
-});
-
-module.exports = {
-    getUsers,
-    createUser,
-    updateUser,
-    deleteUser,
-    blockUser,
-    unblockUser,
-    getBlockedUsers
 };

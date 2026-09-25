@@ -1,13 +1,16 @@
 const express = require('express');
-const router = express.Router();
-const {
-    getVehicles,
-    createVehicle,
-    updateVehicle,
-    deleteVehicle,
-} = require('../controllers/vehicleController');
+const Validator = require('../validators/vehicleValidator');
+const postValidator = require('../middlewares/postValidator');
+const { authenticateOwner, requireOwnership } = require('../middlewares/auth');
+const Controller = require('../controllers/vehicleController');
 
-router.route('/').get(getVehicles).post(createVehicle);
-router.route('/:id').patch(updateVehicle).delete(deleteVehicle);
+const router = express.Router();
+
+router.use(authenticateOwner);
+
+router.get('/', Controller.list);
+router.post('/', Validator.create, postValidator, Controller.create);
+router.patch('/:vehicleId', Validator.update, postValidator, requireOwnership('vehicle'), Controller.update);
+router.delete('/:vehicleId', requireOwnership('vehicle'), Controller.remove);
 
 module.exports = router;

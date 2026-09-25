@@ -1,0 +1,66 @@
+#!/usr/bin/env node
+const http = require('http');
+const config = require('../config/config'); // loads dotenv + validates required env — fails fast
+const logger = require('../utils/logger');
+const db = require('../connections/db');
+
+// Network errors on idle sockets (ETIMEDOUT, ECONNRESET…) surface as
+// uncaughtException when the socket has no error handler; they must not kill
+// the server. Anything else is a genuine unknown — log and exit cleanly so the
+// process manager restarts from a known-good state.
+process.on('uncaughtException', (err) => {
+    const networkCodes = ['ETIMEDOUT', 'ECONNRESET', 'EPIPE', 'ENOTFOUND', 'ECONNREFUSED'];
+    if (networkCodes.includes(err.code)) {
+        logger.warn('uncaughtException (network, suppressed)', { error: err.message });
+        return;
+    }
+    logger.error('uncaughtException (fatal)', { error: err.message, stack: err.stack });
+    process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+    const message = reason instanceof Error ? reason.message : String(reason);
+    logger.error('unhandledRejection', { reason: message, ...(reason instanceof Error && { stack: reason.stack }) });
+});
+
+const start = async () => {
+    await db.connect(); // DB must be ready before we accept traffic
+
+    const app = require('../app');
+    const server = http.createServer(app);
+    const { initSockets, closeSockets } = require('../sockets');
+    initSockets(server);
+
+    server.listen(config.port, () => {
+        logger.info(`SancharTag API listening on port ${config.port} (${config.NODE_ENV})`);
+    });
+
+    let shuttingDown = false;
+    const shutdown = async (signal) => {
+        if (shuttingDown) return;
+        shuttingDown = true;
+        logger.info(`${signal} received — draining`);
+        // Force-exit backstop if a connection refuses to drain.
+        const killTimer = setTimeout(() => {
+            logger.warn('shutdown drain timed out — forcing exit');
+            process.exit(1);
+        }, 10_000);
+        killTimer.unref();
+        try {
+            await closeSockets();
+            await new Promise((resolve) => server.close(resolve));
+            await db.disconnect();
+            logger.info('shutdown complete');
+            process.exit(0);
+        } catch (err) {
+            logger.error('shutdown error', { error: err.message });
+            process.exit(1);
+        }
+    };
+    ['SIGTERM', 'SIGINT'].forEach((signal) => process.on(signal, () => shutdown(signal)));
+};
+
+start().catch((err) => {
+    logger.error('boot failed', { error: err.message, stack: err.stack });
+    process.exit(1);
+});

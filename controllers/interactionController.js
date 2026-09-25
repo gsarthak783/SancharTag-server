@@ -1,251 +1,119 @@
-const asyncHandler = require('express-async-handler');
-const mongoose = require('mongoose');
-const { Interaction, DeletedInteraction, User, Vehicle } = require('../db');
-const { sendPushNotification } = require('../utils/notifications');
-const { emitToRoom, emitToUser } = require('../socket');
+const interactionService = require('../dbServices/interactionService');
+const archiveService = require('../dbServices/archiveService');
+const messageService = require('../services/messageService');
+const errorCodes = require('../config/errorCodes');
+const { handleResponse, handleError } = require('../utils/requestHandlers');
+const { SENDER_ROLE, INTERACTION_STATUS } = require('../constants/interaction');
 
-// @desc    Get interactions (supports query by userId or interactionId)
-// @route   GET /interactions
-// @access  Public
-const getInteractions = asyncHandler(async (req, res) => {
-    const { userId, interactionId } = req.query;
-    let query = {};
-
-    if (userId) {
-        query.userId = userId;
-    }
-
-    if (interactionId) {
-        query.interactionId = interactionId;
-    }
-
-    const interactions = await Interaction.find(query);
-    res.json(interactions);
+// Scanner sees the conversation, never the owner's identifiers or capture data.
+const scannerView = (interaction) => ({
+    interactionId: interaction.interactionId,
+    status: interaction.status,
+    contactType: interaction.contactType,
+    messages: interaction.messages,
+    lastMessage: interaction.lastMessage,
+    createdAt: interaction.createdAt,
+    resolvedAt: interaction.resolvedAt,
 });
 
-// @desc    Create an interaction
-// @route   POST /interactions
-// @access  Public
-const createInteraction = asyncHandler(async (req, res) => {
-    let { interactionId, userId, vehicleId, type, contactType, messages, lastMessage, scanner } = req.body;
-
-    // Defaults
-    type = type || 'Scan';
-    contactType = contactType || 'scan';
-
-    if (!interactionId || !userId || !vehicleId) {
-        res.status(400);
-        throw new Error('Please add all required fields (interactionId, userId, vehicleId)');
+exports.list = async (req, res) => {
+    try {
+        const { page, limit, status } = req.query;
+        const data = await interactionService.listByUser(req.user.userId, { page, limit, status });
+        handleResponse({ res, data });
+    } catch (error) {
+        handleError({ res, error });
     }
+};
 
-    // Capture IP
-    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-
-    // Merge scanner details
-    scanner = {
-        ...scanner,
-        ip: ip,
-        capturedAt: new Date()
-    };
-
-    const interaction = await Interaction.create({
-        interactionId,
-        userId,
-        vehicleId,
-        type,
-        contactType,
-        messages,
-        lastMessage,
-        scanner
-    });
-
-    // Check for blocking
-    const user = await User.findOne({ userId });
-
-    // Check if blocked (schema is array of objects { phoneNumber, name })
-    if (user && user.blockedNumbers && user.blockedNumbers.some(entry => entry.phoneNumber === scanner.phoneNumber)) {
-        res.status(403);
-        throw new Error('You have been blocked by this user.');
-    }
-
-    if (interaction) {
-        // Send Push Notification to Owner
-        try {
-            const user = await User.findOne({ userId: userId });
-            const vehicle = await Vehicle.findOne({ vehicleId: vehicleId });
-
-            if (user && user.pushToken && user.notificationPreferences.newScans) {
-                const vehicleNum = vehicle ? vehicle.vehicleNumber : 'Unknown Vehicle';
-                await sendPushNotification(
-                    user.pushToken,
-                    'Vehicle Scanned!',
-                    `Your vehicle ${vehicleNum} has covered a new scan.`,
-                    { interactionId: interactionId, type: 'new_interaction' }
-                );
-            }
-
-            // Emit to user's room for real-time update
-            emitToUser(userId, 'new_interaction', interaction);
-        } catch (error) {
-            console.error('Error sending push notification:', error);
-            // Don't fail the request if notification fails
+// authenticateAny ran: owners must own it, scanners must hold ITS token.
+exports.getOne = async (req, res) => {
+    try {
+        const { interactionId } = req.params;
+        // Scanner scope check FIRST — an out-of-scope token learns nothing,
+        // not even whether the interaction exists.
+        if (req.scanner && req.scanner.interactionId !== interactionId) {
+            throw errorCodes.INVALID_INTERACTION_TOKEN;
         }
 
-        res.status(201).json(interaction);
-    } else {
-        res.status(400);
-        throw new Error('Invalid interaction data');
+        const interaction = await interactionService.getByInteractionId(interactionId);
+        if (!interaction) throw errorCodes.INTERACTION_NOT_FOUND;
+
+        if (req.user) {
+            if (interaction.userId !== req.user.userId) throw errorCodes.NOT_OWNER;
+            return handleResponse({ res, data: interaction });
+        }
+        handleResponse({ res, data: scannerView(interaction) });
+    } catch (error) {
+        handleError({ res, error });
     }
-});
+};
 
-// @desc    Update interaction
-// @route   PATCH /interactions/:id
-// @access  Public
-const updateInteraction = asyncHandler(async (req, res) => {
-    const interactionId = req.params.id;
-
-    const interaction = await Interaction.findOne({ interactionId });
-
-    if (!interaction) {
-        res.status(404);
-        throw new Error('Interaction not found');
+exports.sendMessage = async (req, res) => {
+    try {
+        const { interactionId } = req.params;
+        // Identity → role. Nothing about the sender comes from the payload.
+        let senderRole;
+        if (req.user) {
+            senderRole = SENDER_ROLE.OWNER;
+        } else {
+            if (req.scanner.interactionId !== interactionId) throw errorCodes.INVALID_INTERACTION_TOKEN;
+            senderRole = SENDER_ROLE.SCANNER;
+        }
+        const { message } = await messageService.sendMessage({
+            interactionId,
+            senderRole,
+            text: req.body.text,
+            asOwnerUserId: req.user?.userId || null,
+        });
+        handleResponse({ res, statusCode: 201, data: message });
+    } catch (error) {
+        handleError({ res, error });
     }
+};
 
-    const updatedInteraction = await Interaction.findOneAndUpdate({ interactionId }, req.body, {
-        new: true,
-    });
-
-    res.json(updatedInteraction);
-});
-
-
-// @desc    Add message to interaction
-// @route   POST /interactions/:id/messages
-// @access  Public
-const addMessage = asyncHandler(async (req, res) => {
-    const interactionId = req.params.id;
-    const { text, senderId, messageId } = req.body;
-
-    const interaction = await Interaction.findOne({ interactionId });
-
-    if (!interaction) {
-        res.status(404);
-        throw new Error('Interaction not found');
+exports.updateStatus = async (req, res) => {
+    try {
+        const data = await messageService.updateStatusAndNotify({
+            interactionId: req.resource.interactionId,
+            status: req.body.status,
+            endedBy: SENDER_ROLE.OWNER,
+        });
+        handleResponse({ res, data });
+    } catch (error) {
+        handleError({ res, error });
     }
+};
 
-    const newMessage = {
-        messageId: messageId || new mongoose.Types.ObjectId().toString(),
-        senderId,
-        text,
-        timestamp: new Date(),
-        isRead: false
-    };
-
-    interaction.messages.push(newMessage);
-    interaction.lastMessage = text;
-
-    // Reactivate if scanner sends a message to a resolved interaction
-    if (senderId === 'scanner' && interaction.status === 'resolved') {
-        interaction.status = 'active';
-        interaction.resolvedAt = undefined;
+exports.resolve = async (req, res) => {
+    try {
+        const data = await messageService.updateStatusAndNotify({
+            interactionId: req.resource.interactionId,
+            status: INTERACTION_STATUS.RESOLVED,
+            endedBy: SENDER_ROLE.OWNER,
+        });
+        handleResponse({ res, data });
+    } catch (error) {
+        handleError({ res, error });
     }
+};
 
-    await interaction.save();
-
-    res.status(201).json(newMessage);
-});
-
-// @desc    Delete interaction (archives first)
-// @route   DELETE /interactions/:id
-// @access  Public
-const deleteInteraction = asyncHandler(async (req, res) => {
-    const interactionId = req.params.id;
-    const interaction = await Interaction.findOne({ interactionId });
-
-    if (!interaction) {
-        res.status(404);
-        throw new Error('Interaction not found');
+exports.markRead = async (req, res) => {
+    try {
+        const data = await interactionService.markRead(req.resource.interactionId);
+        handleResponse({ res, data });
+    } catch (error) {
+        handleError({ res, error });
     }
+};
 
-    // Archive before deleting
-    await DeletedInteraction.create({
-        ...interaction.toObject(),
-        deletedAt: new Date()
-    });
-
-    await interaction.deleteOne();
-
-    res.json({ id: interactionId, message: 'Interaction deleted and archived' });
-});
-
-// @desc    Get interaction by ID
-// @route   GET /interactions/:id
-// @access  Public
-const getInteractionById = asyncHandler(async (req, res) => {
-    const interaction = await Interaction.findOne({ interactionId: req.params.id });
-
-    if (interaction) {
-        res.json(interaction);
-    } else {
-        res.status(404);
-        throw new Error('Interaction not found');
+exports.remove = async (req, res) => {
+    try {
+        const { interactionId } = req.resource;
+        const doc = await interactionService.remove(interactionId);
+        if (doc) await archiveService.archiveInteractions([doc], req.user.userId);
+        handleResponse({ res, message: 'Interaction deleted', data: { interactionId } });
+    } catch (error) {
+        handleError({ res, error });
     }
-});
-
-// @desc    Update interaction status
-// @route   PATCH /interactions/:id/status
-// @access  Public
-const updateStatus = asyncHandler(async (req, res) => {
-    const interactionId = req.params.id;
-    const { status } = req.body;
-
-    const interaction = await Interaction.findOne({ interactionId });
-
-    if (!interaction) {
-        res.status(404);
-        throw new Error('Interaction not found');
-    }
-
-    interaction.status = status;
-
-    if (status === 'resolved') {
-        interaction.resolvedAt = new Date();
-    } else if (status === 'active') {
-        interaction.resolvedAt = undefined;
-    }
-
-    await interaction.save();
-
-    res.json(interaction);
-});
-
-// @desc    Mark interaction as resolved
-// @route   PATCH /interactions/:id/resolve
-// @access  Public
-const resolveInteraction = asyncHandler(async (req, res) => {
-    const interactionId = req.params.id;
-    console.log(`Resolving interaction: ${interactionId}`);
-    const interaction = await Interaction.findOne({ interactionId });
-
-    if (!interaction) {
-        res.status(404);
-        throw new Error('Interaction not found');
-    }
-
-    interaction.status = 'resolved';
-    interaction.resolvedAt = new Date();
-    await interaction.save();
-
-    res.json(interaction);
-});
-
-module.exports = {
-    getInteractions,
-    createInteraction,
-    updateInteraction,
-    deleteInteraction,
-    addMessage,
-    resolveInteraction,
-    getInteractionById,
-    updateStatus
 };

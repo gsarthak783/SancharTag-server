@@ -1,7 +1,12 @@
 const express = require('express');
-const router = express.Router();
-const { createReport, getReports } = require('../controllers/reportController');
+const Validator = require('../validators/reportValidator');
+const postValidator = require('../middlewares/postValidator');
+const { authenticateOwner, authenticateAny } = require('../middlewares/auth');
+const Controller = require('../controllers/reportController');
 
-router.route('/').get(getReports).post(createReport);
+const router = express.Router();
+
+router.post('/', authenticateAny, Validator.create, postValidator, Controller.create);
+router.get('/', authenticateOwner, Controller.list);
 
 module.exports = router;
