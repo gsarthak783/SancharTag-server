@@ -15,6 +15,9 @@ const {
 } = require('../constants/interaction');
 
 const notifyOwnerOfMessage = async (interaction, text) => {
+    // The owner has this exact chat on screen — the message just rendered
+    // live over the socket; a push would only duplicate it.
+    if (await sockets.ownerInInteractionRoom(interaction.interactionId)) return;
     const owner = await userService.getWithPushToken(interaction.userId);
     if (!owner?.pushToken || !owner.notificationPreferences?.chatMessages) return;
     const vehicle = await vehicleService.getByVehicleId(interaction.vehicleId);
