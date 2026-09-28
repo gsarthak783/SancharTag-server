@@ -25,6 +25,18 @@ exports.me = async (req, res) => {
     }
 };
 
+// Multi-device push registration (feature 02): one entry per device,
+// deduped across accounts, capped at 5 most-recently-seen.
+exports.registerPushToken = async (req, res) => {
+    try {
+        const { token, deviceId, platform } = req.body;
+        await userService.registerPushToken(req.user.userId, { token, deviceId, platform });
+        handleResponse({ res, message: 'Push token registered' });
+    } catch (error) {
+        handleError({ res, error });
+    }
+};
+
 exports.updateMe = async (req, res) => {
     try {
         const updates = pick(req.body, PROFILE_WRITABLE_FIELDS);

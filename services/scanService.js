@@ -53,14 +53,22 @@ exports.getScanViewByCode = async (shortCode) =>
     scanViewForVehicle(await vehicleService.getByShortCode(shortCode));
 
 const notifyOwnerOfScan = async (owner, vehicle, interactionId) => {
-    const withToken = await userService.getWithPushToken(owner.userId);
-    if (!withToken?.pushToken || !withToken.notificationPreferences?.newScans) return;
-    await notificationService.sendPushNotification(
-        withToken.pushToken,
-        'Vehicle scanned',
-        `Someone scanned the tag on ${vehicle.vehicleNumber}`,
-        { interactionId, type: 'new_interaction' },
-    );
+    const prefs = await userService.getByUserId(owner.userId);
+    if (!prefs?.notificationPreferences?.newScans) return;
+    // Transactional: a scan alert IS the product. Push to every device on
+    // the MAX-importance 'scans' channel + inbox entry; interactionId as
+    // dedupeKey collapses any double-fire to one send.
+    await notificationService.notifyUser({
+        userId: owner.userId,
+        eventKey: 'new_scan',
+        dedupeKey: `scan:${interactionId}`,
+        title: 'Vehicle scanned',
+        body: `Someone scanned the tag on ${vehicle.vehicleNumber}`,
+        data: { interactionId, type: 'new_interaction' },
+        deepLink: `/interaction/${interactionId}`,
+        channels: ['push', 'inapp'],
+        channelId: 'scans',
+    });
 };
 
 /**
@@ -104,6 +112,8 @@ exports.createInteraction = async ({ tagId, scanTokenInfo, scannerPhone, body, i
     notifyOwnerOfScan(owner, vehicle, interaction.interactionId).catch((err) => {
         logger.error('scan push failed', { error: err.message });
     });
+    // Engagement counter for lifecycle segments ("0 scans in 14d" etc.).
+    userService.touchLastScan(vehicle.userId).catch(() => { });
 
     return {
         interaction: {

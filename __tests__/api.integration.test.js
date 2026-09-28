@@ -252,6 +252,37 @@ describe('SancharTag API — end to end', () => {
         expect(await InteractionModel.countDocuments({})).toBe(before); // no row created
     });
 
+    test('notification engine: token registration + inbox fed by the scan alert', async () => {
+        const bad = await request(app)
+            .post('/api/v1/users/me/push-tokens')
+            .set('Authorization', `Bearer ${state.ownerToken}`)
+            .send({ token: 'not-a-token', deviceId: 'dev1', platform: 'android' });
+        expect(bad.status).toBe(422);
+
+        const reg = await request(app)
+            .post('/api/v1/users/me/push-tokens')
+            .set('Authorization', `Bearer ${state.ownerToken}`)
+            .send({ token: 'ExponentPushToken[test-device-1]', deviceId: 'dev1', platform: 'android' });
+        expect(reg.status).toBe(200);
+
+        // The earlier scan interaction wrote an inbox row (fire-and-forget —
+        // give it a beat to settle).
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        const list = await request(app)
+            .get('/api/v1/notifications')
+            .set('Authorization', `Bearer ${state.ownerToken}`);
+        expect(list.status).toBe(200);
+        expect(list.body.data.unreadCount).toBeGreaterThanOrEqual(1);
+        expect(list.body.data.items.some((n) => n.type === 'new_scan')).toBe(true);
+
+        const read = await request(app)
+            .patch('/api/v1/notifications/read')
+            .set('Authorization', `Bearer ${state.ownerToken}`)
+            .send({});
+        expect(read.status).toBe(200);
+        expect(read.body.data.unreadCount).toBe(0);
+    });
+
     test('logout revokes every session token (salt rotation)', async () => {
         const logout = await request(app)
             .post('/api/v1/auth/logout')

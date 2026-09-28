@@ -32,6 +32,7 @@ exports.verifyOtp = async ({ body: { phoneNumber, otp } }, res) => {
         if (user.status === 'suspended') throw errorCodes.ACCOUNT_SUSPENDED;
 
         const token = generateSessionToken(user);
+        userService.touchLastActive(user.userId).catch(() => { }); // engagement counter
         const { jwtSalt, pushToken, blockedNumbers, ...safeUser } = user;
 
         handleResponse({

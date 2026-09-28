@@ -10,7 +10,28 @@ const userSchema = new mongoose.Schema({
     status: { type: String, enum: ['active', 'suspended'], default: 'active' },
 
     jwtSalt: { type: String, required: true, select: false },
+    // Legacy single token — kept readable until every client registers via
+    // POST /users/me/push-tokens; senders prefer expoTokens when present.
     pushToken: { type: String, select: false },
+
+    // Multi-device push (notification engine, feature 02). Receipts polling
+    // prunes DeviceNotRegistered entries; capped at 5 per user on write.
+    expoTokens: {
+        type: [{
+            token: { type: String, required: true },
+            deviceId: { type: String, required: true },
+            platform: { type: String, enum: ['ios', 'android'], required: true },
+            lastSeenAt: { type: Date, default: Date.now },
+            _id: false,
+        }],
+        select: false,
+    },
+
+    // Denormalized engagement counters — lifecycle segments are plain finds
+    // on these (e.g. { vehicleCount: 0, createdAt: { $lte: T-3d } }).
+    vehicleCount: { type: Number, default: 0 },
+    lastActiveAt: { type: Date },
+    lastScanAt: { type: Date },
 
     notificationPreferences: {
         pushEnabled: { type: Boolean, default: true },
