@@ -31,6 +31,19 @@ router.get('/interactions/:interactionId', Controller.getInteractionMeta);
 // the reason again and log the access loudly.
 router.get('/interactions/:interactionId/messages', Controller.unlockInteractionMessages);
 
+// Notification engine (feature 02, phase C)
+router.get('/templates', Controller.listTemplates);
+router.post('/templates', Controller.createTemplate);
+router.patch('/templates/:key', Controller.updateTemplate);
+router.get('/campaigns', Controller.listCampaigns);
+router.post('/campaigns', Controller.createCampaign);
+router.get('/campaigns/:campaignId', Controller.getCampaign);
+router.post('/campaigns/:campaignId/pause', Controller.setCampaignState('pause'));
+router.post('/campaigns/:campaignId/resume', Controller.setCampaignState('resume'));
+router.post('/campaigns/:campaignId/cancel', Controller.setCampaignState('cancel'));
+router.post('/audience-preview', Controller.previewAudience);
+router.get('/users/:userId/deliveries', Controller.userDeliveries);
+
 router.get('/support/otp-status', Controller.otpStatus);
 router.post('/support/clear-rate-limit', Controller.clearRateLimit);
 

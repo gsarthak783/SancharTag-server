@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const logger = require('../utils/logger');
 const { pollExpoReceipts } = require('./expoReceipts');
 const { runNoVehicleNudges, runTestTagNudges, runWinbackNudges } = require('./lifecycle');
+const { runDueCampaigns } = require('./campaignRunner');
 
 // Mongo-backed scheduler (Pulse = maintained Agenda fork): zero new infra,
 // jobs survive restarts. The seam is this module — swap to BullMQ+Redis here
@@ -23,6 +24,7 @@ const initJobs = async () => {
     pulse.define('lifecycle-no-vehicle', () => runNoVehicleNudges(), { shouldSaveResult: false });
     pulse.define('lifecycle-test-tag', () => runTestTagNudges(), { shouldSaveResult: false });
     pulse.define('lifecycle-winback', () => runWinbackNudges(), { shouldSaveResult: false });
+    pulse.define('campaign-runner', () => runDueCampaigns(), { shouldSaveResult: false });
 
     await pulse.start();
     // Push sends return tickets, not outcomes — poll receipts to learn
@@ -31,6 +33,7 @@ const initJobs = async () => {
     await pulse.every('30 minutes', 'lifecycle-no-vehicle');
     await pulse.every('24 hours', 'lifecycle-test-tag');
     await pulse.every('24 hours', 'lifecycle-winback');
+    await pulse.every('1 minute', 'campaign-runner');
     logger.info('jobs started (pulse)');
     return pulse;
 };
