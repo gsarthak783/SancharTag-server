@@ -28,6 +28,7 @@
     "morgan": "^1.10.0",
     "rate-limiter-flexible": "^11.2.1",
     "socket.io": "^4.8.3",
+    "tslib": "^2.8.1",
     "winston": "^3.17.0"
   },
   "devDependencies": {
