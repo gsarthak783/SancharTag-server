@@ -91,6 +91,10 @@ const notifyUser = async ({
     channels = ['push', 'inapp'],
     channelId = 'default',
     campaignId = null,
+    // Non-transactional sends name the notificationPreferences flag that
+    // gates their PUSH (the inbox stays — it's the quiet channel). Opt-outs
+    // are RECORDED as suppressed_optout, never silently dropped.
+    pref = null,
 }) => {
     const outcome = { push: 'skipped', inapp: 'skipped' };
     try {
@@ -127,8 +131,18 @@ const notifyUser = async ({
             const user = await UserModel.findOne({ userId })
                 .select('+expoTokens +pushToken notificationPreferences')
                 .lean();
+            const optedOut = pref && user && (
+                user.notificationPreferences?.pushEnabled === false
+                || user.notificationPreferences?.[pref] === false
+            );
             const tokens = user ? tokensForUser(user) : [];
-            if (!tokens.length) {
+            if (optedOut) {
+                const delivery = await claimDelivery({ userId, channel: 'push', eventKey, dedupeKey, campaignId });
+                if (delivery) {
+                    await delivery.updateOne({ $set: { status: 'suppressed_optout', resolvedAt: new Date() } });
+                }
+                outcome.push = 'suppressed_optout';
+            } else if (!tokens.length) {
                 outcome.push = 'no_tokens';
             } else {
                 const delivery = await claimDelivery({ userId, channel: 'push', eventKey, dedupeKey, campaignId });
