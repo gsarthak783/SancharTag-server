@@ -65,6 +65,40 @@ exports.setPushToken = async (userId, pushToken) => {
     return Model.updateOne({ userId }, { $set: { pushToken } });
 };
 
+// Multi-device registration (feature 02): one entry per deviceId, token
+// stripped from any other account (device changed hands), capped at the 5
+// most-recently-seen devices.
+exports.registerPushToken = async (userId, { token, deviceId, platform }) => {
+    await Model.updateMany(
+        { userId: { $ne: userId }, 'expoTokens.token': token },
+        { $pull: { expoTokens: { token } } },
+    );
+    await Model.updateOne({ userId }, { $pull: { expoTokens: { deviceId } } });
+    return Model.updateOne(
+        { userId },
+        {
+            $push: {
+                expoTokens: {
+                    $each: [{ token, deviceId, platform, lastSeenAt: new Date() }],
+                    $sort: { lastSeenAt: -1 },
+                    $slice: 5,
+                },
+            },
+        },
+    );
+};
+
+// --- Engagement counters (lifecycle segments read these — no joins at send time) ---
+
+exports.adjustVehicleCount = (userId, delta) =>
+    Model.updateOne({ userId }, { $inc: { vehicleCount: delta } });
+
+exports.touchLastScan = (userId) =>
+    Model.updateOne({ userId }, { $set: { lastScanAt: new Date() } });
+
+exports.touchLastActive = (userId) =>
+    Model.updateOne({ userId }, { $set: { lastActiveAt: new Date() } });
+
 // --- Blocking (all numbers E.164-normalized before reaching here) ---
 
 exports.getBlockedNumbers = async (userId) => {

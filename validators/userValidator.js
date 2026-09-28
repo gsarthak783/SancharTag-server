@@ -15,6 +15,16 @@ exports.updateMe = [
     body('pushToken').optional().isString().isLength({ max: 200 }),
 ];
 
+exports.registerPushToken = [
+    body('token').isString().withMessage(errorCodes.VALIDATION_FAILED)
+        .matches(/^ExponentPushToken\[.+\]$/).withMessage(errorCodes.VALIDATION_FAILED)
+        .isLength({ max: 200 }).withMessage(errorCodes.VALIDATION_FAILED),
+    body('deviceId').isString().withMessage(errorCodes.VALIDATION_FAILED)
+        .trim().notEmpty().withMessage(errorCodes.VALIDATION_FAILED)
+        .isLength({ max: 100 }).withMessage(errorCodes.VALIDATION_FAILED),
+    body('platform').isIn(['ios', 'android']).withMessage(errorCodes.VALIDATION_FAILED),
+];
+
 exports.blockNumber = [
     body('phoneNumber')
         .customSanitizer((value) => normalizePhone(value))

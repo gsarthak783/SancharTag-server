@@ -14,16 +14,24 @@ const {
     MESSAGE_TYPE,
 } = require('../constants/interaction');
 
-const notifyOwnerOfMessage = async (interaction, text) => {
-    const owner = await userService.getWithPushToken(interaction.userId);
-    if (!owner?.pushToken || !owner.notificationPreferences?.chatMessages) return;
+const notifyOwnerOfMessage = async (interaction, text, messageId) => {
+    // The owner has this exact chat on screen — the message just rendered
+    // live over the socket; a push would only duplicate it.
+    if (await sockets.ownerInInteractionRoom(interaction.interactionId)) return;
+    const owner = await userService.getByUserId(interaction.userId);
+    if (!owner?.notificationPreferences?.chatMessages) return;
     const vehicle = await vehicleService.getByVehicleId(interaction.vehicleId);
-    await notificationService.sendPushNotification(
-        owner.pushToken,
-        `New message about ${vehicle?.vehicleNumber || 'your vehicle'}`,
-        text.slice(0, 120),
-        { interactionId: interaction.interactionId, type: 'new_message' },
-    );
+    // Push only — the chat thread is its own record; an inbox row per
+    // message would drown the bell. messageId dedupes retries.
+    await notificationService.notifyUser({
+        userId: interaction.userId,
+        eventKey: 'new_message',
+        dedupeKey: `msg:${messageId}`,
+        title: `New message about ${vehicle?.vehicleNumber || 'your vehicle'}`,
+        body: text.slice(0, 120),
+        data: { interactionId: interaction.interactionId, type: 'new_message' },
+        channels: ['push'],
+    });
 };
 
 /**
@@ -70,7 +78,7 @@ exports.sendMessage = async ({ interactionId, senderRole, text, type = MESSAGE_T
     });
 
     if (senderRole === SENDER_ROLE.SCANNER) {
-        notifyOwnerOfMessage(interaction, text).catch((err) => {
+        notifyOwnerOfMessage(interaction, text, message.messageId).catch((err) => {
             logger.error('message push failed', { error: err.message, interactionId });
         });
     }

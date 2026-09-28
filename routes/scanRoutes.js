@@ -9,6 +9,8 @@ const router = express.Router();
 
 // The anonymous, scanner-facing surface. Rate-limited; responses are strict
 // whitelists (see scanService.buildScanView).
+// Sticker short codes (declared BEFORE /:tagId so it isn't swallowed).
+router.get('/code/:shortCode', publicRateLimiter, Controller.getScanViewByCode);
 router.get('/:tagId', publicRateLimiter, Controller.getScanView);
 router.post(
     '/:tagId/interactions',

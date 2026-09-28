@@ -1,7 +1,15 @@
 const Model = require('../models/vehicleModel');
-const { generateVehicleId, generateTagId } = require('../utils/ids');
+const { generateVehicleId, generateTagId, generateShortCode } = require('../utils/ids');
+
+// The unique sparse index is the real collision check — retry a few times
+// rather than pre-querying (find-then-insert races).
+const isDuplicateShortCode = (err) =>
+    err?.code === 11000 && err?.keyPattern?.shortCode;
 
 exports.getByTagId = (tagId) => Model.findOne({ tagId }).lean();
+
+exports.getByShortCode = (shortCode) =>
+    Model.findOne({ shortCode: String(shortCode).toUpperCase() }).lean();
 
 exports.getByVehicleId = (vehicleId) => Model.findOne({ vehicleId }).lean();
 
@@ -11,13 +19,20 @@ exports.countByUser = (userId) => Model.countDocuments({ userId });
 
 // IDs are server-generated here — clients never supply them.
 exports.create = async (userId, data) => {
-    const vehicle = await Model.create({
-        ...data,
-        userId,
-        vehicleId: generateVehicleId(),
-        tagId: generateTagId(),
-    });
-    return vehicle.toObject();
+    for (let attempt = 0; ; attempt += 1) {
+        try {
+            const vehicle = await Model.create({
+                ...data,
+                userId,
+                vehicleId: generateVehicleId(),
+                tagId: generateTagId(),
+                shortCode: generateShortCode(),
+            });
+            return vehicle.toObject();
+        } catch (err) {
+            if (!isDuplicateShortCode(err) || attempt >= 3) throw err;
+        }
+    }
 };
 
 // `updates` MUST already be allowlist-picked by the caller.
@@ -58,12 +73,21 @@ exports.setActive = (vehicleId, isActive) => Model.findOneAndUpdate(
     { new: true, lean: true },
 );
 
-// Compromised/misused sticker: issue a fresh tagId — the old QR dies instantly.
-exports.regenerateTag = (vehicleId) => Model.findOneAndUpdate(
-    { vehicleId },
-    { $set: { tagId: generateTagId() } },
-    { new: true, lean: true },
-);
+// Compromised/misused sticker: issue a fresh tagId AND shortCode — both
+// printed URLs die instantly.
+exports.regenerateTag = async (vehicleId) => {
+    for (let attempt = 0; ; attempt += 1) {
+        try {
+            return await Model.findOneAndUpdate(
+                { vehicleId },
+                { $set: { tagId: generateTagId(), shortCode: generateShortCode() } },
+                { new: true, lean: true },
+            );
+        } catch (err) {
+            if (!isDuplicateShortCode(err) || attempt >= 3) throw err;
+        }
+    }
+};
 
 exports.countAll = () => Model.countDocuments({});
 

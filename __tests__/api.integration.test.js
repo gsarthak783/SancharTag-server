@@ -83,6 +83,8 @@ describe('SancharTag API — end to end', () => {
         expect(res.status).toBe(201);
         expect(res.body.data.vehicleId).toMatch(/^veh_/);
         expect(res.body.data.tagId).toMatch(/^tag_/);
+        // Sticker short code: 6 chars, no look-alike characters (0O 1IL U).
+        expect(res.body.data.shortCode).toMatch(/^[ABCDEFGHJKMNPQRSTWXYZ23456789]{6}$/);
         state.vehicle = res.body.data;
     });
 
@@ -114,6 +116,18 @@ describe('SancharTag API — end to end', () => {
         const res = await request(app).get('/api/v1/scan/tag_doesnotexist');
         expect(res.status).toBe(404);
         expect(res.body.code).toBe('TAG_NOT_FOUND');
+    });
+
+    test('sticker short code resolves the same scan view (case-insensitive) and names the tagId', async () => {
+        const res = await request(app).get(`/api/v1/scan/code/${state.vehicle.shortCode.toLowerCase()}`);
+        expect(res.status).toBe(200);
+        expect(res.body.data.tagId).toBe(state.vehicle.tagId);
+        expect(res.body.data.vehicle.vehicleNumber).toBe('MH12AB1234');
+        expect(res.body.data.scanToken).toBeDefined();
+
+        const unknown = await request(app).get('/api/v1/scan/code/ZZZZZZ');
+        expect(unknown.status).toBe(404);
+        expect(unknown.body.code).toBe('TAG_NOT_FOUND');
     });
 
     test('scanner phone verification issues a scanner token (no user created)', async () => {
@@ -236,6 +250,37 @@ describe('SancharTag API — end to end', () => {
         expect(attempt.status).toBe(403);
         expect(attempt.body.code).toBe('BLOCKED_BY_OWNER');
         expect(await InteractionModel.countDocuments({})).toBe(before); // no row created
+    });
+
+    test('notification engine: token registration + inbox fed by the scan alert', async () => {
+        const bad = await request(app)
+            .post('/api/v1/users/me/push-tokens')
+            .set('Authorization', `Bearer ${state.ownerToken}`)
+            .send({ token: 'not-a-token', deviceId: 'dev1', platform: 'android' });
+        expect(bad.status).toBe(422);
+
+        const reg = await request(app)
+            .post('/api/v1/users/me/push-tokens')
+            .set('Authorization', `Bearer ${state.ownerToken}`)
+            .send({ token: 'ExponentPushToken[test-device-1]', deviceId: 'dev1', platform: 'android' });
+        expect(reg.status).toBe(200);
+
+        // The earlier scan interaction wrote an inbox row (fire-and-forget —
+        // give it a beat to settle).
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        const list = await request(app)
+            .get('/api/v1/notifications')
+            .set('Authorization', `Bearer ${state.ownerToken}`);
+        expect(list.status).toBe(200);
+        expect(list.body.data.unreadCount).toBeGreaterThanOrEqual(1);
+        expect(list.body.data.items.some((n) => n.type === 'new_scan')).toBe(true);
+
+        const read = await request(app)
+            .patch('/api/v1/notifications/read')
+            .set('Authorization', `Bearer ${state.ownerToken}`)
+            .send({});
+        expect(read.status).toBe(200);
+        expect(read.body.data.unreadCount).toBe(0);
     });
 
     test('logout revokes every session token (salt rotation)', async () => {

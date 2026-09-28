@@ -1,6 +1,7 @@
 const vehicleService = require('../dbServices/vehicleService');
 const interactionService = require('../dbServices/interactionService');
 const archiveService = require('../dbServices/archiveService');
+const userService = require('../dbServices/userService');
 const errorCodes = require('../config/errorCodes');
 const { handleResponse, handleError } = require('../utils/requestHandlers');
 const { pick } = require('../utils/pick');
@@ -29,6 +30,8 @@ exports.create = async (req, res) => {
             req.user.userId,
             pick(req.body, VEHICLE_WRITABLE_FIELDS),
         );
+        // Lifecycle segments key off this counter ("signed up, no vehicle").
+        userService.adjustVehicleCount(req.user.userId, 1).catch(() => { });
         handleResponse({ res, statusCode: 201, message: 'Vehicle created', data });
     } catch (error) {
         handleError({ res, error });
@@ -52,7 +55,10 @@ exports.remove = async (req, res) => {
     try {
         const { vehicleId } = req.resource;
         const vehicleDoc = await vehicleService.remove(vehicleId);
-        if (vehicleDoc) await archiveService.archiveVehicles([vehicleDoc], req.user.userId);
+        if (vehicleDoc) {
+            await archiveService.archiveVehicles([vehicleDoc], req.user.userId);
+            userService.adjustVehicleCount(req.user.userId, -1).catch(() => { });
+        }
         const interactions = await interactionService.removeAllByVehicle(vehicleId);
         await archiveService.archiveInteractions(interactions, req.user.userId);
         handleResponse({ res, message: 'Vehicle deleted', data: { vehicleId } });

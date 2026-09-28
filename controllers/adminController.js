@@ -249,3 +249,120 @@ exports.clearRateLimit = async (req, res) => {
         handleError({ res, error });
     }
 };
+
+// --- Notification engine (feature 02, phase C): templates + campaigns ---
+
+const TemplateModel = require('../models/templateModel');
+const CampaignModel = require('../models/campaignModel');
+const DeliveryModel = require('../models/deliveryModel');
+const campaignService = require('../services/campaignService');
+
+exports.listTemplates = async (req, res) => {
+    try {
+        const items = await TemplateModel.find({}).sort({ updatedAt: -1 }).lean();
+        handleResponse({ res, data: { items, presets: campaignService.AUDIENCE_PRESETS } });
+    } catch (error) {
+        handleError({ res, error });
+    }
+};
+
+exports.createTemplate = async (req, res) => {
+    try {
+        const { key, name, category, channels, variables } = req.body;
+        if (!key || !name || !channels) throw errorCodes.VALIDATION_FAILED;
+        const doc = await TemplateModel.create({
+            key, name, category, channels, variables, createdBy: req.actingAdmin,
+        });
+        handleResponse({ res, statusCode: 201, message: 'Template created', data: doc.toObject() });
+    } catch (error) {
+        handleError({ res, error: error?.code === 11000 ? errorCodes.VALIDATION_FAILED : error });
+    }
+};
+
+exports.updateTemplate = async (req, res) => {
+    try {
+        const { name, category, channels, variables, active } = req.body;
+        const doc = await TemplateModel.findOneAndUpdate(
+            { key: req.params.key },
+            { $set: { ...(name !== undefined && { name }), ...(category !== undefined && { category }), ...(channels !== undefined && { channels }), ...(variables !== undefined && { variables }), ...(active !== undefined && { active }) } },
+            { new: true, lean: true, runValidators: true },
+        );
+        if (!doc) throw errorCodes.ROUTE_NOT_FOUND;
+        handleResponse({ res, data: doc });
+    } catch (error) {
+        handleError({ res, error });
+    }
+};
+
+exports.listCampaigns = async (req, res) => {
+    try {
+        const page = Math.max(+(req.query.page || 1), 1);
+        const limit = +(req.query.limit || 20);
+        const [items, totalCount] = await Promise.all([
+            CampaignModel.find({}).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+            CampaignModel.countDocuments({}),
+        ]);
+        handleResponse({ res, data: { items, totalCount, page, totalPages: Math.ceil(totalCount / limit) || 1 } });
+    } catch (error) {
+        handleError({ res, error });
+    }
+};
+
+exports.createCampaign = async (req, res) => {
+    try {
+        const campaign = await campaignService.createCampaign(req.body, req.actingAdmin);
+        handleResponse({ res, statusCode: 201, message: 'Campaign scheduled', data: campaign });
+    } catch (error) {
+        handleError({ res, error });
+    }
+};
+
+exports.getCampaign = async (req, res) => {
+    try {
+        const campaign = await CampaignModel.findOne({ campaignId: req.params.campaignId }).lean();
+        if (!campaign) throw errorCodes.ROUTE_NOT_FOUND;
+        handleResponse({ res, data: campaign });
+    } catch (error) {
+        handleError({ res, error });
+    }
+};
+
+// pause | resume | cancel — plain state moves; the runner respects them.
+exports.setCampaignState = (action) => async (req, res) => {
+    try {
+        const transitions = {
+            pause: { from: ['scheduled', 'running'], to: 'paused' },
+            resume: { from: ['paused'], to: 'scheduled' },
+            cancel: { from: ['scheduled', 'paused'], to: 'cancelled' },
+        };
+        const t = transitions[action];
+        const campaign = await CampaignModel.findOneAndUpdate(
+            { campaignId: req.params.campaignId, state: { $in: t.from } },
+            { $set: { state: t.to } },
+            { new: true, lean: true },
+        );
+        if (!campaign) throw errorCodes.ROUTE_NOT_FOUND;
+        handleResponse({ res, message: `Campaign ${t.to}`, data: campaign });
+    } catch (error) {
+        handleError({ res, error });
+    }
+};
+
+exports.previewAudience = async (req, res) => {
+    try {
+        handleResponse({ res, data: await campaignService.previewAudience(req.body.audience || {}) });
+    } catch (error) {
+        handleError({ res, error });
+    }
+};
+
+// Per-user delivery timeline for the console's user detail page.
+exports.userDeliveries = async (req, res) => {
+    try {
+        const items = await DeliveryModel.find({ userId: req.params.userId })
+            .sort({ createdAt: -1 }).limit(+(req.query.limit || 50)).lean();
+        handleResponse({ res, data: items });
+    } catch (error) {
+        handleError({ res, error });
+    }
+};

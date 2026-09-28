@@ -14,6 +14,11 @@ const vehicleSchema = new mongoose.Schema({
     tagId: { type: String, required: true, unique: true },
     qrCodeUrl: { type: String },
 
+    // Short sticker code (QR print kit, feature 07): scan.…/t/{code} — six
+    // no-lookalike chars keep the printed QR at V3/EC-H. Sparse: legacy docs
+    // get one from the backfill script. Rotates together with the tagId.
+    shortCode: { type: String, unique: true, sparse: true, uppercase: true },
+
     // Optional vehicle-level emergency contact override (owner's profile
     // emergencyContact is the default). Never exposed unless privacy allows.
     emergencyContactNumber: { type: String },

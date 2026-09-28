@@ -98,9 +98,18 @@ const emitToInteraction = (interactionId, event, data) => {
     if (io) io.to(`interaction:${interactionId}`).emit(event, data);
 };
 
+// True when one of the owner's sockets is inside the interaction room — i.e.
+// that chat is literally on their screen (the app joins on chat open, leaves
+// on close, and disconnects on background, so membership is a live signal).
+const ownerInInteractionRoom = async (interactionId) => {
+    if (!io) return false;
+    const members = await io.in(`interaction:${interactionId}`).fetchSockets();
+    return members.some((member) => member.data?.identity?.role === SENDER_ROLE.OWNER);
+};
+
 const closeSockets = () => new Promise((resolve) => {
     if (!io) return resolve();
     io.close(() => resolve());
 });
 
-module.exports = { initSockets, getIO, emitToUser, emitToInteraction, closeSockets };
+module.exports = { initSockets, getIO, emitToUser, emitToInteraction, ownerInInteractionRoom, closeSockets };
