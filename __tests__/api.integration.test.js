@@ -83,6 +83,8 @@ describe('SancharTag API — end to end', () => {
         expect(res.status).toBe(201);
         expect(res.body.data.vehicleId).toMatch(/^veh_/);
         expect(res.body.data.tagId).toMatch(/^tag_/);
+        // Sticker short code: 6 chars, no look-alike characters (0O 1IL U).
+        expect(res.body.data.shortCode).toMatch(/^[ABCDEFGHJKMNPQRSTWXYZ23456789]{6}$/);
         state.vehicle = res.body.data;
     });
 
@@ -114,6 +116,18 @@ describe('SancharTag API — end to end', () => {
         const res = await request(app).get('/api/v1/scan/tag_doesnotexist');
         expect(res.status).toBe(404);
         expect(res.body.code).toBe('TAG_NOT_FOUND');
+    });
+
+    test('sticker short code resolves the same scan view (case-insensitive) and names the tagId', async () => {
+        const res = await request(app).get(`/api/v1/scan/code/${state.vehicle.shortCode.toLowerCase()}`);
+        expect(res.status).toBe(200);
+        expect(res.body.data.tagId).toBe(state.vehicle.tagId);
+        expect(res.body.data.vehicle.vehicleNumber).toBe('MH12AB1234');
+        expect(res.body.data.scanToken).toBeDefined();
+
+        const unknown = await request(app).get('/api/v1/scan/code/ZZZZZZ');
+        expect(unknown.status).toBe(404);
+        expect(unknown.body.code).toBe('TAG_NOT_FOUND');
     });
 
     test('scanner phone verification issues a scanner token (no user created)', async () => {

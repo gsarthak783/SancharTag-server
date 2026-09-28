@@ -30,18 +30,27 @@ const buildScanView = (vehicle, owner) => {
     };
 };
 
-exports.getScanView = async (tagId) => {
-    const vehicle = await vehicleService.getByTagId(tagId);
+const scanViewForVehicle = async (vehicle) => {
     if (!vehicle) throw errorCodes.TAG_NOT_FOUND;
     if (!vehicle.isActive) throw errorCodes.VEHICLE_INACTIVE;
     const owner = await userService.getByUserId(vehicle.userId);
     if (!owner || owner.status === 'suspended') throw errorCodes.TAG_NOT_FOUND;
 
     return {
+        // Interactions are tagId-addressed; a /t/{code} arrival has no tagId
+        // in its URL, so every scan view names it explicitly.
+        tagId: vehicle.tagId,
         vehicle: buildScanView(vehicle, owner),
-        scanToken: generateScanToken(tagId),
+        scanToken: generateScanToken(vehicle.tagId),
     };
 };
+
+exports.getScanView = async (tagId) =>
+    scanViewForVehicle(await vehicleService.getByTagId(tagId));
+
+// Sticker short-code URLs (QR print kit, feature 07): scan.…/t/{code}.
+exports.getScanViewByCode = async (shortCode) =>
+    scanViewForVehicle(await vehicleService.getByShortCode(shortCode));
 
 const notifyOwnerOfScan = async (owner, vehicle, interactionId) => {
     const withToken = await userService.getWithPushToken(owner.userId);

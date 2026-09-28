@@ -10,6 +10,15 @@ exports.getScanView = async ({ params: { tagId } }, res) => {
     }
 };
 
+exports.getScanViewByCode = async ({ params: { shortCode } }, res) => {
+    try {
+        const data = await scanService.getScanViewByCode(shortCode);
+        handleResponse({ res, data });
+    } catch (error) {
+        handleError({ res, error });
+    }
+};
+
 exports.createInteraction = async (req, res) => {
     try {
         const data = await scanService.createInteraction({
