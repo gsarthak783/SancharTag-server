@@ -1,4 +1,5 @@
 const interactionService = require('../dbServices/interactionService');
+const chatMessageService = require('../dbServices/chatMessageService');
 const messageService = require('../services/messageService');
 const { consumeMessageBudget } = require('../middlewares/rateLimiter/messages');
 const errorCodes = require('../config/errorCodes');
@@ -79,5 +80,98 @@ module.exports = (io, socket) => {
         } catch (error) {
             emitError(socket, error);
         }
+    });
+
+    // --- Chat v2 (feature 04) — versioned rollout alongside the legacy events ---
+
+    // Reliable send: the ack callback IS the "sent" tick. Clients retry with
+    // the same clientId until acked; the unique index collapses the retries.
+    socket.on('msg:send', async (data = {}, cb) => {
+        const ack = typeof cb === 'function' ? cb : () => { };
+        try {
+            const interactionId = resolveInteractionId(socket, data.interactionId);
+            if (!interactionId) return ack({ ok: false, code: 'NOT_OWNER' });
+
+            const text = typeof data.text === 'string' ? data.text.trim() : '';
+            if (!text) return ack({ ok: false, code: 'MESSAGE_TEXT_REQUIRED' });
+            const clientId = typeof data.clientId === 'string' && data.clientId
+                ? String(data.clientId).slice(0, 80)
+                : null;
+            if (!clientId) return ack({ ok: false, code: 'VALIDATION_FAILED' });
+            if (!(await consumeMessageBudget(interactionId))) {
+                return ack({ ok: false, code: 'RATE_LIMITED', retryable: true });
+            }
+
+            const replyTo = data.replyTo?.messageId ? {
+                messageId: String(data.replyTo.messageId).slice(0, 60),
+                senderRole: data.replyTo.senderRole === 'owner' ? 'owner' : 'scanner',
+                snippet: String(data.replyTo.snippet || '').slice(0, 140),
+            } : null;
+
+            const { message } = await messageService.sendMessage({
+                interactionId,
+                senderRole: identity.role,
+                text,
+                clientId,
+                replyTo,
+                asOwnerUserId: identity.role === SENDER_ROLE.OWNER ? identity.userId : null,
+            });
+            ack({ ok: true, messageId: message.messageId, seq: message.seq, at: message.timestamp });
+        } catch (error) {
+            // Network-ish failures are retryable; rule violations are not.
+            const code = error?.code || 'INTERNAL_ERROR';
+            ack({ ok: false, code, retryable: code === 'INTERNAL_ERROR' });
+        }
+    });
+
+    // Receipt cursors — idempotent ($max), re-emitted freely on reconnect.
+    const onReceipt = (kind) => async (data = {}) => {
+        try {
+            const interactionId = resolveInteractionId(socket, data.interactionId);
+            if (!interactionId || !(+data.upToSeq > 0)) return;
+            await messageService.advanceReceipt({
+                interactionId,
+                role: identity.role,
+                kind,
+                upToSeq: +data.upToSeq,
+            });
+        } catch { /* cursor advances are best-effort; reconnect re-sends them */ }
+    };
+    socket.on('msg:delivered', onReceipt('delivered'));
+    socket.on('msg:read', onReceipt('read'));
+
+    // Reconnect sync: everything after the client's high-water mark, plus the
+    // current cursors — doubles as the offline-delivery trigger.
+    socket.on('msg:sync', async (data = {}, cb) => {
+        const ack = typeof cb === 'function' ? cb : () => { };
+        try {
+            const interactionId = resolveInteractionId(socket, data.interactionId);
+            if (!interactionId) return ack({ ok: false, code: 'NOT_OWNER' });
+            const [rows, interaction] = await Promise.all([
+                chatMessageService.listSince(interactionId, +data.sinceSeq || 0),
+                interactionService.getByInteractionId(interactionId),
+            ]);
+            ack({
+                ok: true,
+                messages: rows.map(messageService.wireMessage),
+                seq: interaction?.seq ?? 0,
+                receipts: interaction?.receipts ?? null,
+                status: interaction?.status,
+            });
+        } catch (error) {
+            ack({ ok: false, code: error?.code || 'INTERNAL_ERROR' });
+        }
+    });
+
+    // Typing is ephemeral by design: volatile, never persisted, 5s expiry on
+    // the receiving side.
+    socket.on('typing', (data = {}) => {
+        const interactionId = resolveInteractionId(socket, data.interactionId);
+        if (!interactionId) return;
+        socket.volatile.to(`interaction:${interactionId}`).emit('typing', {
+            interactionId,
+            role: identity.role,
+            on: !!data.on,
+        });
     });
 };

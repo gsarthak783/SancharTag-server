@@ -1,19 +1,31 @@
 const interactionService = require('../dbServices/interactionService');
+const chatMessageService = require('../dbServices/chatMessageService');
 const archiveService = require('../dbServices/archiveService');
 const messageService = require('../services/messageService');
 const errorCodes = require('../config/errorCodes');
 const { handleResponse, handleError } = require('../utils/requestHandlers');
 const { SENDER_ROLE, INTERACTION_STATUS } = require('../constants/interaction');
 
+// Chat v2: messages come from their own collection, latest page first
+// (?beforeSeq= pages further back). Falls back to a legacy embedded array on
+// docs the migration hasn't touched.
+const loadMessages = async (interaction, { beforeSeq, limit } = {}) => {
+    if (!interaction.seq && interaction.messages?.length) return interaction.messages;
+    const rows = await chatMessageService.listPage(interaction.interactionId, { beforeSeq, limit });
+    return rows.map(messageService.wireMessage);
+};
+
 // Scanner sees the conversation, never the owner's identifiers or capture data.
-const scannerView = (interaction) => ({
+const scannerView = (interaction, messages) => ({
     interactionId: interaction.interactionId,
     status: interaction.status,
     contactType: interaction.contactType,
-    messages: interaction.messages,
+    messages,
     lastMessage: interaction.lastMessage,
     createdAt: interaction.createdAt,
     resolvedAt: interaction.resolvedAt,
+    seq: interaction.seq ?? 0,
+    receipts: interaction.receipts ?? null,
 });
 
 exports.list = async (req, res) => {
@@ -39,11 +51,14 @@ exports.getOne = async (req, res) => {
         const interaction = await interactionService.getByInteractionId(interactionId);
         if (!interaction) throw errorCodes.INTERACTION_NOT_FOUND;
 
+        const { beforeSeq, limit } = req.query;
+        const messages = await loadMessages(interaction, { beforeSeq, limit });
+
         if (req.user) {
             if (interaction.userId !== req.user.userId) throw errorCodes.NOT_OWNER;
-            return handleResponse({ res, data: interaction });
+            return handleResponse({ res, data: { ...interaction, messages } });
         }
-        handleResponse({ res, data: scannerView(interaction) });
+        handleResponse({ res, data: scannerView(interaction, messages) });
     } catch (error) {
         handleError({ res, error });
     }
@@ -64,6 +79,8 @@ exports.sendMessage = async (req, res) => {
             interactionId,
             senderRole,
             text: req.body.text,
+            // Optional idempotency key (chat v2 outbox retries over REST).
+            clientId: typeof req.body.clientId === 'string' ? req.body.clientId.slice(0, 80) : null,
             asOwnerUserId: req.user?.userId || null,
         });
         handleResponse({ res, statusCode: 201, data: message });
@@ -101,6 +118,16 @@ exports.resolve = async (req, res) => {
 exports.markRead = async (req, res) => {
     try {
         const data = await interactionService.markRead(req.resource.interactionId);
+        // Blue-tick fan-out to the scanner side (idempotent cursor).
+        if (data?.seq > 0) {
+            const sockets = require('../sockets');
+            sockets.emitToInteraction(data.interactionId, 'msg:status', {
+                interactionId: data.interactionId,
+                role: SENDER_ROLE.OWNER,
+                kind: 'read',
+                upToSeq: data.receipts?.owner?.read ?? data.seq,
+            });
+        }
         handleResponse({ res, data });
     } catch (error) {
         handleError({ res, error });
