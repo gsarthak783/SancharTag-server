@@ -52,18 +52,23 @@ exports.getOne = async (req, res) => {
         if (!interaction) throw errorCodes.INTERACTION_NOT_FOUND;
 
         const { beforeSeq, limit } = req.query;
-        const messages = await loadMessages(interaction, { beforeSeq, limit });
 
         if (req.user) {
             if (interaction.userId !== req.user.userId) throw errorCodes.NOT_OWNER;
-            // Blocking never rewrites a finished session's status — this flag
-            // is how the chat header shows "blocked" truthfully alongside it.
+            // Messages and the block check are independent — one DB roundtrip
+            // of latency, not two (each hop is ~200ms until the region move).
             const userService = require('../dbServices/userService');
-            const scannerBlocked = interaction.scanner?.phoneNumber
-                ? await userService.isBlocked(interaction.userId, interaction.scanner.phoneNumber)
-                : false;
+            const [messages, scannerBlocked] = await Promise.all([
+                loadMessages(interaction, { beforeSeq, limit }),
+                // Blocking never rewrites a finished session's status — this
+                // flag is how the chat header shows both truths.
+                interaction.scanner?.phoneNumber
+                    ? userService.isBlocked(interaction.userId, interaction.scanner.phoneNumber)
+                    : Promise.resolve(false),
+            ]);
             return handleResponse({ res, data: { ...interaction, messages, scannerBlocked } });
         }
+        const messages = await loadMessages(interaction, { beforeSeq, limit });
         handleResponse({ res, data: scannerView(interaction, messages) });
     } catch (error) {
         handleError({ res, error });
