@@ -56,7 +56,13 @@ exports.getOne = async (req, res) => {
 
         if (req.user) {
             if (interaction.userId !== req.user.userId) throw errorCodes.NOT_OWNER;
-            return handleResponse({ res, data: { ...interaction, messages } });
+            // Blocking never rewrites a finished session's status — this flag
+            // is how the chat header shows "blocked" truthfully alongside it.
+            const userService = require('../dbServices/userService');
+            const scannerBlocked = interaction.scanner?.phoneNumber
+                ? await userService.isBlocked(interaction.userId, interaction.scanner.phoneNumber)
+                : false;
+            return handleResponse({ res, data: { ...interaction, messages, scannerBlocked } });
         }
         handleResponse({ res, data: scannerView(interaction, messages) });
     } catch (error) {
