@@ -1,4 +1,5 @@
 const Model = require('../models/userModel');
+const authCache = require('../utils/authCache');
 const { generateUserId, generateJwtSalt } = require('../utils/ids');
 
 // Reads are .lean(); sensitive fields (jwtSalt, pushToken, blockedNumbers) are
@@ -44,17 +45,24 @@ exports.findOrCreateByPhone = async (phoneNumber) => {
 };
 
 // `updates` MUST already be allowlist-picked by the caller.
-exports.updateProfile = (userId, updates) => Model.findOneAndUpdate(
+exports.updateProfile = (userId, updates) => {
+    authCache.purge(userId);
+    return updateProfileQuery(userId, updates);
+};
+const updateProfileQuery = (userId, updates) => Model.findOneAndUpdate(
     { userId },
     { $set: updates },
     { new: true, lean: true, runValidators: true },
 );
 
 // Rotating the salt invalidates every outstanding session token (logout, suspension).
-exports.rotateSalt = (userId) => Model.updateOne(
-    { userId },
-    { $set: { jwtSalt: generateJwtSalt() } },
-);
+exports.rotateSalt = (userId) => {
+    authCache.purge(userId);
+    return Model.updateOne(
+        { userId },
+        { $set: { jwtSalt: generateJwtSalt() } },
+    );
+};
 
 // A push token identifies one device — strip it from any other account first.
 exports.setPushToken = async (userId, pushToken) => {
@@ -155,11 +163,14 @@ exports.searchUsers = async ({ search = '', page = 1, limit = 20 } = {}) => {
     return { items, totalCount, page: +page, totalPages: Math.ceil(totalCount / +limit) || 1 };
 };
 
-exports.setStatus = (userId, status) => Model.findOneAndUpdate(
-    { userId },
-    { $set: { status } },
-    { new: true, lean: true, runValidators: true },
-);
+exports.setStatus = (userId, status) => {
+    authCache.purge(userId);
+    return Model.findOneAndUpdate(
+        { userId },
+        { $set: { status } },
+        { new: true, lean: true, runValidators: true },
+    );
+};
 
 exports.countAll = () => Model.countDocuments({});
 exports.countSince = (date) => Model.countDocuments({ createdAt: { $gte: date } });

@@ -42,9 +42,26 @@ const interactionSchema = new mongoose.Schema({
         longitude: { type: Number },
     },
 
+    // LEGACY (pre chat-v2): kept only so unmigrated docs still read; new
+    // messages live in the chatmessages collection. The migration $unsets it.
     messages: [messageSchema],
     lastMessage: { type: String, maxlength: MESSAGE_MAX_LENGTH },
     unreadCount: { type: Number, default: 0 }, // scanner messages the owner hasn't read
+
+    // Chat v2 (feature 04): per-conversation message counter + receipt
+    // CURSORS — one $max write covers any number of messages; ticks and the
+    // unread badge derive from these.
+    seq: { type: Number, default: 0 },
+    receipts: {
+        owner: {
+            delivered: { type: Number, default: 0 },
+            read: { type: Number, default: 0 },
+        },
+        scanner: {
+            delivered: { type: Number, default: 0 },
+            read: { type: Number, default: 0 },
+        },
+    },
 }, {
     timestamps: true,
 });

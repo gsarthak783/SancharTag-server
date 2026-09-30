@@ -58,17 +58,22 @@ exports.updateStatus = (interactionId, status) => Model.findOneAndUpdate(
  * can't lose each other (no read-modify-write).
  * Returns the updated doc, or null when the session isn't active.
  */
-exports.pushMessageIfActive = async (interactionId, message) => {
+// Chat v2: claim the next seq atomically — the active-status filter and the
+// counter bump are one operation, so a resolved session can never mint a seq
+// and concurrent sends can't lose each other.
+exports.claimNextSeq = async (interactionId, { senderRole, text, type }) => {
     const updated = await Model.findOneAndUpdate(
         { interactionId, status: INTERACTION_STATUS.ACTIVE },
         {
-            $push: { messages: message },
-            $set: { lastMessage: message.text },
-            ...(message.senderRole === SENDER_ROLE.SCANNER ? { $inc: { unreadCount: 1 } } : {}),
+            $inc: {
+                seq: 1,
+                ...(senderRole === SENDER_ROLE.SCANNER ? { unreadCount: 1 } : {}),
+            },
+            $set: { lastMessage: text },
         },
         { new: true, lean: true, projection: { messages: 0 } },
     );
-    if (updated && updated.contactType === CONTACT_TYPE.SCAN && message.type === 'text') {
+    if (updated && updated.contactType === CONTACT_TYPE.SCAN && type === 'text') {
         // First real message upgrades the interaction from a bare scan to a chat.
         await Model.updateOne(
             { interactionId, contactType: CONTACT_TYPE.SCAN },
@@ -79,24 +84,41 @@ exports.pushMessageIfActive = async (interactionId, message) => {
     return updated;
 };
 
+// Receipt cursors only move forward — $max makes replays and races safe.
+// unreadCount is NOT touched here: the sender's implicit self-cursor must
+// not clear the owner's badge; explicit reads recompute it (messageService).
+exports.advanceReceipt = (interactionId, role, kind, upToSeq) => Model.findOneAndUpdate(
+    { interactionId },
+    { $max: { [`receipts.${role}.${kind}`]: +upToSeq } },
+    { new: true, lean: true, projection: { receipts: 1, seq: 1, interactionId: 1, userId: 1, unreadCount: 1 } },
+);
+
+exports.setUnreadCount = (interactionId, unreadCount) => Model.updateOne(
+    { interactionId },
+    { $set: { unreadCount } },
+);
+
 exports.setContactType = (interactionId, contactType) => Model.updateOne(
     { interactionId },
     { $set: { contactType } },
 );
 
+// Owner opened the chat: badge clears and the read cursor jumps to the
+// current seq (pipeline update so both happen against the same doc state).
 exports.markRead = (interactionId) => Model.findOneAndUpdate(
     { interactionId },
-    {
+    [{
         $set: {
             unreadCount: 0,
-            'messages.$[m].isRead': true,
+            'receipts.owner.read': { $max: ['$receipts.owner.read', '$seq'] },
+            'receipts.owner.delivered': { $max: ['$receipts.owner.delivered', '$seq'] },
         },
-    },
+    }],
     {
-        arrayFilters: [{ 'm.isRead': false }],
         new: true,
         lean: true,
-        projection: { unreadCount: 1, interactionId: 1 },
+        updatePipeline: true,
+        projection: { unreadCount: 1, interactionId: 1, seq: 1, receipts: 1, userId: 1 },
     },
 );
 

@@ -26,7 +26,15 @@ const decode = (token) => {
 // req.user (salt stripped) → sliding refresh via response header.
 const loadOwner = async (info, req, res) => {
     if (info.purpose) throw errorCodes.INVALID_TOKEN; // scoped tokens are not sessions
-    const user = await userService.getAuthUser(info.userId);
+    // 30s TTL cache: saves the auth roundtrip on every request (see
+    // utils/authCache for the revocation-delay trade). Salt/status checks
+    // below still run on the cached row.
+    const authCache = require('../utils/authCache');
+    let user = authCache.get(info.userId);
+    if (!user) {
+        user = await userService.getAuthUser(info.userId);
+        if (user) authCache.set(info.userId, user);
+    }
     if (!user) throw errorCodes.INVALID_TOKEN;
     if (user.status === 'suspended') throw errorCodes.ACCOUNT_SUSPENDED;
     if (user.jwtSalt !== info.jwtSalt) throw errorCodes.SESSION_EXPIRED;

@@ -62,11 +62,18 @@ module.exports = (io, socket) => {
 
             await interactionService.setContactType(interactionId, CONTACT_TYPE.CALL);
 
+            // Caller display name is SERVER truth, never the payload (clients
+            // used to send a hardcoded 'Scanner'). Scanner→owner shows the
+            // scanner's verified-capture name; owner→scanner shows the vehicle
+            // (the owner's identity is never exposed to scanners by design).
+            const vehicleForName = await vehicleService.getByVehicleId(interaction.vehicleId);
             const callPayload = {
                 signal: data.signalData,
                 interactionId,
-                name: data.name
-                    || (identity.role === SENDER_ROLE.SCANNER ? (interaction.scanner?.name || 'Scanner') : 'Owner'),
+                name: identity.role === SENDER_ROLE.SCANNER
+                    ? (interaction.scanner?.name || 'Scanner')
+                    : `Owner · ${vehicleForName?.vehicleNumber || 'your scanned vehicle'}`,
+                vehicleNumber: vehicleForName?.vehicleNumber || null,
                 fromRole: identity.role,
             };
 

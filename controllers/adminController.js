@@ -182,7 +182,9 @@ exports.getInteractionMeta = async (req, res) => {
         const interaction = await interactionService.getByInteractionId(req.params.interactionId);
         if (!interaction) throw errorCodes.INTERACTION_NOT_FOUND;
         const { messages, ...meta } = interaction;
-        handleResponse({ res, data: { ...meta, messageCount: (messages || []).length } });
+        // Post chat-v2 the count is the seq counter; legacy docs still carry
+        // the embedded array.
+        handleResponse({ res, data: { ...meta, messageCount: interaction.seq || (messages || []).length } });
     } catch (error) {
         handleError({ res, error });
     }
@@ -208,13 +210,17 @@ exports.unlockInteractionMessages = async (req, res) => {
             reason,
         });
 
+        const chatMessageService = require('../dbServices/chatMessageService');
+        const unlockedMessages = interaction.messages?.length
+            ? interaction.messages
+            : await chatMessageService.listForSnapshot(interaction.interactionId, 500);
         handleResponse({
             res,
             data: {
                 interactionId: interaction.interactionId,
                 status: interaction.status,
                 scanner: interaction.scanner,
-                messages: interaction.messages || [],
+                messages: unlockedMessages,
             },
         });
     } catch (error) {

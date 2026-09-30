@@ -23,13 +23,20 @@ exports.create = async (req, res) => {
         }
         if (await reportService.existsFor(interactionId, reportedBy)) throw errorCodes.ALREADY_REPORTED;
 
+        // Frozen evidence — chat v2 keeps messages in their own collection,
+        // so the snapshot re-embeds them (capped): it must survive the
+        // conversation's later deletion.
+        const chatMessageService = require('../dbServices/chatMessageService');
+        const snapshotMessages = interaction.messages?.length
+            ? interaction.messages
+            : await chatMessageService.listForSnapshot(interactionId, 200);
         const report = await reportService.create({
             interactionId,
             userId: interaction.userId,
             reportedBy,
             category,
             description,
-            interactionSnapshot: interaction, // frozen evidence
+            interactionSnapshot: { ...interaction, messages: snapshotMessages },
         });
 
         await messageService.updateStatusAndNotify({
