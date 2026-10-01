@@ -21,6 +21,7 @@ const SENDER_ROLE = {
 const MESSAGE_TYPE = {
     TEXT: 'text',
     CALL: 'call',
+    IMAGE: 'image',
 };
 
 const MESSAGE_MAX_LENGTH = 2000;

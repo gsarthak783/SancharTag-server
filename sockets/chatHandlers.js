@@ -151,9 +151,10 @@ module.exports = (io, socket) => {
                 chatMessageService.listSince(interactionId, +data.sinceSeq || 0),
                 interactionService.getByInteractionId(interactionId),
             ]);
+            const mediaService = require('../services/mediaService');
             ack({
                 ok: true,
-                messages: rows.map(messageService.wireMessage),
+                messages: await mediaService.withMediaUrls(rows.map(messageService.wireMessage)),
                 seq: interaction?.seq ?? 0,
                 receipts: interaction?.receipts ?? null,
                 status: interaction?.status,

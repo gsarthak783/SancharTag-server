@@ -6,7 +6,7 @@ exports.findByClient = (conversationId, senderRole, clientId) =>
 
 // Insert; a duplicate clientId (parallel retry) returns the existing row —
 // the unique index is what turns at-least-once delivery into exactly-once.
-exports.insert = async ({ conversationId, senderRole, clientId, seq, text, type, replyTo }) => {
+exports.insert = async ({ conversationId, senderRole, clientId, seq, text, type, replyTo, media }) => {
     try {
         const doc = await Model.create({
             messageId: generateMessageId(),
@@ -17,6 +17,7 @@ exports.insert = async ({ conversationId, senderRole, clientId, seq, text, type,
             text,
             type,
             ...(replyTo && { replyTo }),
+            ...(media && { media }),
         });
         return { message: doc.toObject(), duplicate: false };
     } catch (err) {

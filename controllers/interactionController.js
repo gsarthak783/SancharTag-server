@@ -2,6 +2,7 @@ const interactionService = require('../dbServices/interactionService');
 const chatMessageService = require('../dbServices/chatMessageService');
 const archiveService = require('../dbServices/archiveService');
 const messageService = require('../services/messageService');
+const mediaService = require('../services/mediaService');
 const errorCodes = require('../config/errorCodes');
 const { handleResponse, handleError } = require('../utils/requestHandlers');
 const { SENDER_ROLE, INTERACTION_STATUS } = require('../constants/interaction');
@@ -12,7 +13,7 @@ const { SENDER_ROLE, INTERACTION_STATUS } = require('../constants/interaction');
 const loadMessages = async (interaction, { beforeSeq, limit } = {}) => {
     if (!interaction.seq && interaction.messages?.length) return interaction.messages;
     const rows = await chatMessageService.listPage(interaction.interactionId, { beforeSeq, limit });
-    return rows.map(messageService.wireMessage);
+    return mediaService.withMediaUrls(rows.map(messageService.wireMessage));
 };
 
 // Scanner sees the conversation, never the owner's identifiers or capture data.
@@ -91,6 +92,40 @@ exports.sendMessage = async (req, res) => {
             senderRole,
             text: req.body.text,
             // Optional idempotency key (chat v2 outbox retries over REST).
+            clientId: typeof req.body.clientId === 'string' ? req.body.clientId.slice(0, 80) : null,
+            asOwnerUserId: req.user?.userId || null,
+        });
+        handleResponse({ res, statusCode: 201, data: message });
+    } catch (error) {
+        handleError({ res, error });
+    }
+};
+
+// Photo message: normalize (EXIF/GPS stripped, resized) → R2 → the SAME
+// sendMessage path as text, so session rules, dedupe and fan-out all hold.
+exports.uploadMedia = async (req, res) => {
+    try {
+        const { interactionId } = req.params;
+        let senderRole;
+        if (req.user) {
+            senderRole = SENDER_ROLE.OWNER;
+        } else {
+            if (req.scanner.interactionId !== interactionId) throw errorCodes.INVALID_INTERACTION_TOKEN;
+            senderRole = SENDER_ROLE.SCANNER;
+        }
+        if (!mediaService.enabled()) throw errorCodes.MEDIA_DISABLED;
+        if (!req.file?.buffer) throw errorCodes.MEDIA_INVALID;
+
+        const { buffer, media } = await mediaService.processImage(req.file.buffer);
+        const key = await mediaService.store(interactionId, buffer);
+
+        const caption = typeof req.body.caption === 'string' ? req.body.caption.trim().slice(0, 500) : '';
+        const { message } = await messageService.sendMessage({
+            interactionId,
+            senderRole,
+            text: caption,
+            type: 'image',
+            media: { ...media, key },
             clientId: typeof req.body.clientId === 'string' ? req.body.clientId.slice(0, 80) : null,
             asOwnerUserId: req.user?.userId || null,
         });

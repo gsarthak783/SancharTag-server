@@ -12,7 +12,19 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 const isProduction = NODE_ENV === 'production';
 const smsEnabled = process.env.SMS_ENABLED === 'true';
 
+// Cloudflare R2 (chat images) — the feature stays dormant unless all four
+// are present, so environments without media still boot clean.
+const r2 = {
+    accountId: process.env.R2_ACCOUNT_ID || '',
+    accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
+    bucket: process.env.R2_BUCKET || '',
+};
+r2.enabled = !!(r2.accountId && r2.accessKeyId && r2.secretAccessKey && r2.bucket);
+r2.endpoint = `https://${r2.accountId}.r2.cloudflarestorage.com`;
+
 module.exports = {
+    r2,
     NODE_ENV,
     isProduction,
     port: Number(process.env.PORT) || 5000,
