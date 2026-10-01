@@ -56,6 +56,9 @@ const userSchema = new mongoose.Schema({
         type: [{
             phoneNumber: { type: String, required: true }, // E.164
             name: { type: String, default: 'Unknown' },
+            // Block v2 context (feature 09): when and from which chat.
+            blockedAt: { type: Date },
+            sourceInteractionId: { type: String },
             _id: false,
         }],
         select: false,

@@ -45,6 +45,7 @@ const codes = {
 
     // Generic
     VALIDATION_FAILED: { en: 'Validation failed', statusCode: 422 },
+    SCANNER_RESTRICTED: { en: "This number can't use SancharTag right now. Contact support@sanchartag.online to appeal", statusCode: 403 },
     MEDIA_DISABLED: { en: 'Photo sharing is not available right now', statusCode: 503 },
     MEDIA_INVALID: { en: 'That file is not a supported image', statusCode: 422 },
     MEDIA_TOO_LARGE: { en: 'Images can be up to 8 MB', statusCode: 413 },

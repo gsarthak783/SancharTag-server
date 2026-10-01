@@ -91,6 +91,12 @@ exports.createInteraction = async ({ tagId, scanTokenInfo, scannerPhone, body, i
     if (await userService.isBlocked(vehicle.userId, scannerPhone)) {
         throw errorCodes.BLOCKED_BY_OWNER;
     }
+    // Platform-level restriction (feature 09) — defense in depth behind the
+    // scanner-OTP gate: tokens issued before a restriction landed die here.
+    const trustService = require('./trustService');
+    if (await trustService.isBlockedFromPlatform(scannerPhone)) {
+        throw errorCodes.SCANNER_RESTRICTED;
+    }
 
     const interaction = await interactionService.create({
         userId: vehicle.userId,
@@ -114,6 +120,19 @@ exports.createInteraction = async ({ tagId, scanTokenInfo, scannerPhone, body, i
     });
     // Engagement counter for lifecycle segments ("0 scans in 14d" etc.).
     userService.touchLastScan(vehicle.userId).catch(() => { });
+    // Velocity guard (feature 09): flood patterns become trust events —
+    // passive signal now, watch-listing at repetition. Fire-and-forget.
+    (async () => {
+        const stats = await interactionService.scannerDayStats(scannerPhone, vehicle.vehicleId);
+        if (stats.distinctVehicles >= 8 || stats.onThisVehicle >= 5) {
+            await trustService.recordEvent({
+                phoneNumber: scannerPhone,
+                kind: 'interaction_flood',
+                ownerUserId: vehicle.userId,
+                interactionId: interaction.interactionId,
+            });
+        }
+    })().catch(() => { });
 
     return {
         interaction: {

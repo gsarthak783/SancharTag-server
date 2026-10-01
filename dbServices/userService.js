@@ -121,12 +121,21 @@ exports.isBlocked = async (ownerUserId, phoneNumber) => {
     return !!match;
 };
 
-exports.block = async (userId, { phoneNumber, name }) => {
-    // Pull any existing entry first so re-blocking refreshes the name.
+exports.block = async (userId, { phoneNumber, name, sourceInteractionId = null }) => {
+    // Pull any existing entry first so re-blocking refreshes the context.
     await Model.updateOne({ userId }, { $pull: { blockedNumbers: { phoneNumber } } });
     return Model.updateOne(
         { userId },
-        { $push: { blockedNumbers: { phoneNumber, name: name || 'Unknown' } } },
+        {
+            $push: {
+                blockedNumbers: {
+                    phoneNumber,
+                    name: name || 'Unknown',
+                    blockedAt: new Date(),
+                    ...(sourceInteractionId && { sourceInteractionId }),
+                },
+            },
+        },
     );
 };
 

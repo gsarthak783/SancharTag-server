@@ -137,6 +137,18 @@ exports.countByStatus = (status) => Model.countDocuments({ status });
 exports.countSince = (date) => Model.countDocuments({ createdAt: { $gte: date } });
 
 // Open sessions with a given scanner phone — used when the owner blocks them.
+// Feature 09 velocity guards: a phone hammering many tags (farming) or one
+// tag (harassment) in a day.
+exports.scannerDayStats = async (phoneNumber, vehicleId) => {
+    const since = new Date(Date.now() - 24 * 3600 * 1000);
+    const base = { 'scanner.phoneNumber': phoneNumber, createdAt: { $gte: since } };
+    const [distinctVehicles, onThisVehicle] = await Promise.all([
+        Model.distinct('vehicleId', base),
+        Model.countDocuments({ ...base, vehicleId }),
+    ]);
+    return { distinctVehicles: distinctVehicles.length, onThisVehicle };
+};
+
 exports.findActiveByScannerPhone = (userId, phoneNumber) => Model.find(
     { userId, 'scanner.phoneNumber': phoneNumber, status: INTERACTION_STATUS.ACTIVE },
     { interactionId: 1 },

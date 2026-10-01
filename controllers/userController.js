@@ -75,10 +75,21 @@ exports.getBlocked = async (req, res) => {
     }
 };
 
-exports.block = async ({ user, body: { phoneNumber, name } }, res) => {
+exports.block = async ({ user, body: { phoneNumber, name, interactionId } }, res) => {
     try {
         if (phoneNumber === user.phoneNumber) throw errorCodes.VALIDATION_FAILED;
-        await userService.block(user.userId, { phoneNumber, name });
+        await userService.block(user.userId, {
+            phoneNumber,
+            name,
+            sourceInteractionId: typeof interactionId === 'string' ? interactionId.slice(0, 60) : null,
+        });
+        // Cross-owner pattern detection (feature 09): fire-and-forget.
+        require('../services/trustService').recordEvent({
+            phoneNumber,
+            kind: 'blocked_by_owner',
+            ownerUserId: user.userId,
+            interactionId: typeof interactionId === 'string' ? interactionId.slice(0, 60) : null,
+        }).catch(() => { });
 
         // Blocking also closes any open sessions with that scanner ('blocked'
         // is system-set — not reachable via PATCH /status by design).

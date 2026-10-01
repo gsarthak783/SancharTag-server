@@ -44,6 +44,12 @@ router.post('/campaigns/:campaignId/cancel', Controller.setCampaignState('cancel
 router.post('/audience-preview', Controller.previewAudience);
 router.get('/users/:userId/deliveries', Controller.userDeliveries);
 
+// Trust & safety (feature 09)
+router.get('/trust', Controller.trustWatchlist);
+router.get('/trust/:phoneNumber', Controller.trustTimeline);
+router.post('/trust/:phoneNumber/restrict', Controller.trustRestrict);
+router.post('/trust/:phoneNumber/clear', Controller.trustClear);
+
 router.get('/support/otp-status', Controller.otpStatus);
 router.post('/support/clear-rate-limit', Controller.clearRateLimit);
 
