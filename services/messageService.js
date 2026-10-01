@@ -8,6 +8,7 @@ const notificationService = require('./notificationService');
 const sockets = require('../sockets');
 const errorCodes = require('../config/errorCodes');
 const logger = require('../utils/logger');
+const mediaService = require('./mediaService');
 const { generateMessageId } = require('../utils/ids');
 const {
     INTERACTION_STATUS,
@@ -47,6 +48,7 @@ const wireMessage = (row) => ({
     seq: row.seq,
     clientId: row.clientId,
     ...(row.replyTo?.messageId && { replyTo: row.replyTo }),
+    ...(row.media?.key && { media: row.media }),
 });
 exports.wireMessage = wireMessage;
 
@@ -67,6 +69,7 @@ exports.sendMessage = async ({
     asOwnerUserId = null,
     clientId = null,
     replyTo = null,
+    media = null,
 }) => {
     const interaction = await interactionService.getByInteractionId(interactionId);
     if (!interaction) throw errorCodes.INTERACTION_NOT_FOUND;
@@ -90,7 +93,7 @@ exports.sendMessage = async ({
         }
     }
 
-    const updated = await interactionService.claimNextSeq(interactionId, { senderRole, text, type });
+    const updated = await interactionService.claimNextSeq(interactionId, { senderRole, text: text || '\ud83d\udcf7 Photo', type });
     if (!updated) throw errorCodes.SESSION_ENDED; // lost a race with resolve/report
 
     const { message: row, duplicate } = await chatMessageService.insert({
@@ -101,8 +104,12 @@ exports.sendMessage = async ({
         text,
         type,
         replyTo,
+        media,
     });
     const message = wireMessage(row);
+    if (message.media?.key) {
+        message.mediaUrl = await mediaService.signedUrl(message.media.key).catch(() => null);
+    }
     if (duplicate) return { message, interaction: updated, duplicate: true };
 
     // Sender's own cursors implicitly cover their message.

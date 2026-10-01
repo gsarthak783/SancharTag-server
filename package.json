@@ -14,7 +14,10 @@
     "test": "jest --runInBand"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1144.0",
+    "@aws-sdk/s3-request-presigner": "^3.1144.0",
     "@pulsecron/pulse": "^1.6.8",
+    "blurhash": "^2.0.5",
     "compression": "^1.8.0",
     "cors": "^2.8.6",
     "cron-parser": "^5.10.1",
@@ -26,7 +29,9 @@
     "libphonenumber-js": "^1.12.31",
     "mongoose": "^9.1.6",
     "morgan": "^1.10.0",
+    "multer": "^2.4.0",
     "rate-limiter-flexible": "^11.2.1",
+    "sharp": "^0.35.5",
     "socket.io": "^4.8.3",
     "tslib": "^2.8.1",
     "winston": "^3.17.0"

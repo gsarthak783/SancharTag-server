@@ -18,7 +18,24 @@ const chatMessageSchema = new mongoose.Schema({
     seq: { type: Number, required: true },
 
     type: { type: String, enum: Object.values(MESSAGE_TYPE), default: MESSAGE_TYPE.TEXT },
-    text: { type: String, required: true, maxlength: MESSAGE_MAX_LENGTH },
+    // Images may ride with an empty caption — text is only mandatory for text.
+    text: {
+        type: String,
+        default: '',
+        maxlength: MESSAGE_MAX_LENGTH,
+        required: function textRequired() { return this.type === MESSAGE_TYPE.TEXT; },
+    },
+
+    // Chat images (feature 04): stored in R2, served via expiring signed
+    // URLs; blurhash renders the placeholder before the bytes arrive.
+    media: {
+        key: String,
+        mime: String,
+        bytes: Number,
+        w: Number,
+        h: Number,
+        blurhash: String,
+    },
 
     // Denormalized quote — rendering a reply must not need a join.
     replyTo: {
