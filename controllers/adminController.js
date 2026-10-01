@@ -167,8 +167,20 @@ exports.setReportStatus = async (req, res) => {
     try {
         const { status } = req.body;
         if (!['open', 'reviewed', 'actioned'].includes(status)) throw errorCodes.INVALID_STATUS;
+        // Upholding (→ actioned) is a STRIKE: two upheld reports restrict the
+        // phone platform-wide — fetch the snapshot before the projection-less
+        // status write so the strike knows whose phone it marks.
+        const full = status === 'actioned' ? await reportService.getByReportId(req.params.reportId) : null;
         const report = await reportService.setStatus(req.params.reportId, status);
         if (!report) throw errorCodes.REPORT_NOT_FOUND;
+        if (status === 'actioned' && full?.reportedBy === 'owner' && full?.interactionSnapshot?.scanner?.phoneNumber) {
+            require('../services/trustService').recordEvent({
+                phoneNumber: full.interactionSnapshot.scanner.phoneNumber,
+                kind: 'report_upheld',
+                ownerUserId: full.userId,
+                interactionId: full.interactionId,
+            }).catch(() => { });
+        }
         handleResponse({ res, data: report });
     } catch (error) {
         handleError({ res, error });
@@ -357,6 +369,60 @@ exports.setCampaignState = (action) => async (req, res) => {
 exports.previewAudience = async (req, res) => {
     try {
         handleResponse({ res, data: await campaignService.previewAudience(req.body.audience || {}) });
+    } catch (error) {
+        handleError({ res, error });
+    }
+};
+
+// --- Trust & safety (feature 09): watchlist + manual moderation ---
+
+const trustService = require('../services/trustService');
+
+exports.trustWatchlist = async (req, res) => {
+    try {
+        const { page, limit } = req.query;
+        handleResponse({ res, data: await trustService.watchlist({ page, limit }) });
+    } catch (error) {
+        handleError({ res, error });
+    }
+};
+
+exports.trustTimeline = async (req, res) => {
+    try {
+        const phoneNumber = req.params.phoneNumber;
+        const [events, restriction] = await Promise.all([
+            trustService.timeline(phoneNumber),
+            trustService.getActiveRestriction(phoneNumber),
+        ]);
+        handleResponse({ res, data: { phoneNumber, restriction, events } });
+    } catch (error) {
+        handleError({ res, error });
+    }
+};
+
+exports.trustRestrict = async (req, res) => {
+    try {
+        const { level, reason, expiresAt } = req.body;
+        if (!['watch', 'restricted', 'banned'].includes(level)) throw errorCodes.VALIDATION_FAILED;
+        if (!reason || String(reason).trim().length < 5) throw errorCodes.VALIDATION_FAILED;
+        const data = await trustService.setRestriction(req.params.phoneNumber, {
+            level,
+            reason: String(reason).trim().slice(0, 500),
+            setBy: req.actingAdmin,
+            expiresAt: expiresAt ? new Date(expiresAt) : null,
+        });
+        logger.warn('trust: manual restriction', { level, actingAdmin: req.actingAdmin });
+        handleResponse({ res, data });
+    } catch (error) {
+        handleError({ res, error });
+    }
+};
+
+exports.trustClear = async (req, res) => {
+    try {
+        const data = await trustService.clearRestriction(req.params.phoneNumber);
+        logger.warn('trust: restriction cleared', { actingAdmin: req.actingAdmin });
+        handleResponse({ res, data: data || { cleared: false } });
     } catch (error) {
         handleError({ res, error });
     }

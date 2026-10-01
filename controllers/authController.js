@@ -54,6 +54,12 @@ exports.verifyOtp = async ({ body: { phoneNumber, otp } }, res) => {
 exports.verifyScannerOtp = async ({ body: { phoneNumber, otp } }, res) => {
     try {
         await otpService.verifyAndConsume(phoneNumber, otp);
+        // Trust & safety (feature 09): platform-restricted phones don't get
+        // a scanner token. Checked AFTER OTP so probing can't enumerate.
+        const trustService = require('../services/trustService');
+        if (await trustService.isBlockedFromPlatform(phoneNumber)) {
+            throw errorCodes.SCANNER_RESTRICTED;
+        }
         handleResponse({
             res,
             message: 'Phone verified',

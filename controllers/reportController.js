@@ -45,6 +45,17 @@ exports.create = async (req, res) => {
             endedBy: reportedBy,
         });
 
+        // Trust signal (feature 09): owner-filed reports mark the scanner's
+        // phone — passive until moderators uphold.
+        if (reportedBy === SENDER_ROLE.OWNER && interaction.scanner?.phoneNumber) {
+            require('../dbServices/../services/trustService').recordEvent({
+                phoneNumber: interaction.scanner.phoneNumber,
+                kind: 'reported',
+                ownerUserId: interaction.userId,
+                interactionId,
+            }).catch(() => { });
+        }
+
         const { interactionSnapshot, ...data } = report;
         handleResponse({ res, statusCode: 201, message: 'Report submitted', data });
     } catch (error) {
