@@ -5,6 +5,7 @@ const { consumeMessageBudget } = require('../middlewares/rateLimiter/messages');
 const errorCodes = require('../config/errorCodes');
 const logger = require('../utils/logger');
 const { SENDER_ROLE, INTERACTION_STATUS } = require('../constants/interaction');
+const presenceStore = require('../utils/presenceStore');
 
 const emitError = (socket, error) => {
     socket.emit('app_error', {
@@ -23,8 +24,46 @@ const resolveInteractionId = (socket, requestedId) => {
     return null;
 };
 
+// Presence transitions broadcast to the room; the entering socket also gets
+// the OTHER side's current state replayed (volatile — it's ephemeral UI).
+const presenceEnter = (io, socket, interactionId, role) => {
+    if (presenceStore.enter(interactionId, role, socket.id)) {
+        socket.to(`interaction:${interactionId}`).volatile.emit('presence', {
+            interactionId, role, online: true, lastSeenAt: null,
+        });
+    }
+    const other = role === SENDER_ROLE.OWNER ? SENDER_ROLE.SCANNER : SENDER_ROLE.OWNER;
+    const snap = presenceStore.snapshot(interactionId)[other];
+    socket.volatile.emit('presence', {
+        interactionId, role: other, online: snap.online, lastSeenAt: snap.lastSeenAt,
+    });
+};
+
+const presenceLeave = (io, socket, interactionId, role) => {
+    if (presenceStore.leave(interactionId, role, socket.id)) {
+        socket.to(`interaction:${interactionId}`).volatile.emit('presence', {
+            interactionId, role, online: false, lastSeenAt: new Date(),
+        });
+    }
+};
+
 module.exports = (io, socket) => {
     const { identity } = socket.data;
+
+    // Scanners are room members from the handshake — count them immediately.
+    if (identity.role === SENDER_ROLE.SCANNER) {
+        presenceEnter(io, socket, identity.interactionId, SENDER_ROLE.SCANNER);
+    }
+
+    // Covers tab close / network drop / app background, where leave_room
+    // never arrives. 'disconnecting' still sees the rooms; 'disconnect' doesn't.
+    socket.on('disconnecting', () => {
+        for (const room of socket.rooms) {
+            if (room.startsWith('interaction:')) {
+                presenceLeave(io, socket, room.slice('interaction:'.length), identity.role);
+            }
+        }
+    });
 
     // Owner opens a chat: verify ownership, then join.
     socket.on('join_room', async (interactionId) => {
@@ -35,6 +74,7 @@ module.exports = (io, socket) => {
                 return emitError(socket, errorCodes.NOT_OWNER);
             }
             socket.join(`interaction:${interactionId}`);
+            presenceEnter(io, socket, interactionId, SENDER_ROLE.OWNER);
         } catch (error) {
             logger.error('join_room failed', { error: error.message });
             emitError(socket, error);
@@ -42,6 +82,9 @@ module.exports = (io, socket) => {
     });
 
     socket.on('leave_room', (interactionId) => {
+        if (socket.rooms.has(`interaction:${interactionId}`)) {
+            presenceLeave(io, socket, interactionId, identity.role);
+        }
         socket.leave(`interaction:${interactionId}`);
     });
 

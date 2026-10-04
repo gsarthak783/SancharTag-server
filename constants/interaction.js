@@ -22,6 +22,7 @@ const MESSAGE_TYPE = {
     TEXT: 'text',
     CALL: 'call',
     IMAGE: 'image',
+    VOICE: 'voice',
 };
 
 const MESSAGE_MAX_LENGTH = 2000;

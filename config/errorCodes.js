@@ -49,6 +49,8 @@ const codes = {
     MEDIA_DISABLED: { en: 'Photo sharing is not available right now', statusCode: 503 },
     MEDIA_INVALID: { en: 'That file is not a supported image', statusCode: 422 },
     MEDIA_TOO_LARGE: { en: 'Images can be up to 8 MB', statusCode: 413 },
+    VOICE_INVALID: { en: 'That recording is not a supported audio format', statusCode: 422 },
+    VOICE_TOO_LARGE: { en: 'Voice messages can be up to 3 MB', statusCode: 413 },
     RATE_LIMITED: { en: 'Too many requests. Please try again later', statusCode: 429 },
     ROUTE_NOT_FOUND: { en: 'Route not found', statusCode: 404 },
     INTERNAL_ERROR: { en: 'Something went wrong. Please try again', statusCode: 500 },

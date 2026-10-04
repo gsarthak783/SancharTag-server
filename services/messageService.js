@@ -93,7 +93,10 @@ exports.sendMessage = async ({
         }
     }
 
-    const updated = await interactionService.claimNextSeq(interactionId, { senderRole, text: text || '\ud83d\udcf7 Photo', type });
+    const displayText = text
+        || (type === MESSAGE_TYPE.VOICE ? '\ud83c\udfa4 Voice message' : '')
+        || (type === MESSAGE_TYPE.IMAGE ? '\ud83d\udcf7 Photo' : '');
+    const updated = await interactionService.claimNextSeq(interactionId, { senderRole, text: displayText, type });
     if (!updated) throw errorCodes.SESSION_ENDED; // lost a race with resolve/report
 
     const { message: row, duplicate } = await chatMessageService.insert({
@@ -127,7 +130,7 @@ exports.sendMessage = async ({
     });
 
     if (senderRole === SENDER_ROLE.SCANNER) {
-        notifyOwnerOfMessage(interaction, text, row.messageId).catch((err) => {
+        notifyOwnerOfMessage(interaction, displayText, row.messageId).catch((err) => {
             logger.error('message push failed', { error: err.message, interactionId });
         });
     }
