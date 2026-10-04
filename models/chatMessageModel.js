@@ -35,6 +35,7 @@ const chatMessageSchema = new mongoose.Schema({
         w: Number,
         h: Number,
         blurhash: String,
+        dur: Number, // voice notes: seconds, client-measured, server-clamped
     },
 
     // Denormalized quote — rendering a reply must not need a join.

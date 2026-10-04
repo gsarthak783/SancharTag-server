@@ -135,6 +135,42 @@ exports.uploadMedia = async (req, res) => {
     }
 };
 
+// Voice note: container-sniffed audio -> R2 as-is (no transcode on this
+// tier) -> the SAME sendMessage path, so voice inherits session rules,
+// dedupe and fan-out. Duration is client-measured, server-clamped to the
+// 2-minute spec cap — it only drives the progress bar, nothing security-y.
+exports.uploadVoice = async (req, res) => {
+    try {
+        const { interactionId } = req.params;
+        let senderRole;
+        if (req.user) {
+            senderRole = SENDER_ROLE.OWNER;
+        } else {
+            if (req.scanner.interactionId !== interactionId) throw errorCodes.INVALID_INTERACTION_TOKEN;
+            senderRole = SENDER_ROLE.SCANNER;
+        }
+        if (!mediaService.enabled()) throw errorCodes.MEDIA_DISABLED;
+        if (!req.file?.buffer) throw errorCodes.VOICE_INVALID;
+
+        const sniffed = mediaService.sniffAudio(req.file.buffer);
+        const dur = Math.min(Math.max(Math.round(+req.body.durationSec) || 1, 1), 120);
+        const key = await mediaService.storeVoice(interactionId, req.file.buffer, sniffed);
+
+        const { message } = await messageService.sendMessage({
+            interactionId,
+            senderRole,
+            text: '',
+            type: 'voice',
+            media: { key, mime: sniffed.mime, bytes: req.file.buffer.length, dur },
+            clientId: typeof req.body.clientId === 'string' ? req.body.clientId.slice(0, 80) : null,
+            asOwnerUserId: req.user?.userId || null,
+        });
+        handleResponse({ res, statusCode: 201, data: message });
+    } catch (error) {
+        handleError({ res, error });
+    }
+};
+
 exports.updateStatus = async (req, res) => {
     try {
         const data = await messageService.updateStatusAndNotify({

@@ -76,6 +76,40 @@ exports.processImage = async (buffer) => {
     };
 };
 
+/**
+ * Voice notes (feature 04 v2.5). No transcoding on this tier — we store what
+ * the recorder produced, but only after verifying the container magic, so a
+ * renamed executable can never land in the bucket:
+ *   webm/EBML 1A45DFA3 (Chrome/Android MediaRecorder opus)
+ *   mp4/m4a 'ftyp'@4   (Safari MediaRecorder, expo-audio AAC)
+ *   ogg 'OggS'         (older recorders)
+ */
+exports.sniffAudio = (buffer) => {
+    if (!buffer || buffer.length < 12) throw errorCodes.VOICE_INVALID;
+    if (buffer[0] === 0x1a && buffer[1] === 0x45 && buffer[2] === 0xdf && buffer[3] === 0xa3) {
+        return { mime: 'audio/webm', ext: 'webm' };
+    }
+    if (buffer.slice(4, 8).toString('ascii') === 'ftyp') {
+        return { mime: 'audio/mp4', ext: 'm4a' };
+    }
+    if (buffer.slice(0, 4).toString('ascii') === 'OggS') {
+        return { mime: 'audio/ogg', ext: 'ogg' };
+    }
+    throw errorCodes.VOICE_INVALID;
+};
+
+exports.storeVoice = async (conversationId, buffer, { mime, ext }) => {
+    const key = `chat/${conversationId}/voice-${crypto.randomBytes(12).toString('base64url')}.${ext}`;
+    await s3().send(new PutObjectCommand({
+        Bucket: config.r2.bucket,
+        Key: key,
+        Body: buffer,
+        ContentType: mime,
+        CacheControl: 'private, max-age=86400',
+    }));
+    return key;
+};
+
 exports.store = async (conversationId, buffer) => {
     const key = `chat/${conversationId}/${crypto.randomBytes(12).toString('base64url')}.jpg`;
     await s3().send(new PutObjectCommand({
@@ -98,9 +132,9 @@ exports.signedUrl = (key) => getSignedUrl(
 
 exports.remove = (key) => s3().send(new DeleteObjectCommand({ Bucket: config.r2.bucket, Key: key }));
 
-// Attach fresh signed URLs to a message list (image messages only).
+// Attach fresh signed URLs to a message list (any stored media).
 exports.withMediaUrls = async (messages) => Promise.all(messages.map(async (m) => (
-    m.type === 'image' && m.media?.key
+    (m.type === 'image' || m.type === 'voice') && m.media?.key
         ? { ...m, mediaUrl: await exports.signedUrl(m.media.key) }
         : m
 )));

@@ -37,4 +37,17 @@ router.get('/:interactionId', authenticateAny, Controller.getOne);
 router.post('/:interactionId/messages', authenticateAny, Validator.sendMessage, postValidator, messageRateLimiter, Controller.sendMessage);
 router.post('/:interactionId/media', authenticateAny, messageRateLimiter, handleImageUpload, Controller.uploadMedia);
 
+// Voice notes: 2-min cap ≈ well under 3 MB at ~48kbps. mimetype from the
+// browser is advisory only — the controller sniffs container magic bytes.
+const voiceUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 3 * 1024 * 1024, files: 1 },
+}).single('audio');
+const handleVoiceUpload = (req, res, next) => voiceUpload(req, res, (err) => {
+    if (!err) return next();
+    const mapped = err.code === 'LIMIT_FILE_SIZE' ? errorCodes.VOICE_TOO_LARGE : errorCodes.VOICE_INVALID;
+    return res.status(mapped.statusCode).json({ success: false, message: mapped.en, code: Object.keys(errorCodes).find((k) => errorCodes[k] === mapped) });
+});
+router.post('/:interactionId/voice', authenticateAny, messageRateLimiter, handleVoiceUpload, Controller.uploadVoice);
+
 module.exports = router;
